@@ -1,0 +1,14 @@
+**/*
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE
+!PRIVACY.md
+!dist/extension.js
+!dist/THIRD_PARTY_NOTICES.txt
+!media/dashboard.html
+!media/dashboard.js
+!media/dashboard.css
+!media/activity-bar.svg
+!media/icon.png
+!media/screenshots/*.png

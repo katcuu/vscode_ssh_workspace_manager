@@ -1,0 +1,12 @@
+node_modules/
+dist/
+artifacts/
+*.log
+.DS_Store
+.vscode-test/
+.env
+.env.*
+*.vsix
+*.pem
+*.key
+.vsce

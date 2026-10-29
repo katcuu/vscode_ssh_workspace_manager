@@ -1,0 +1,179 @@
+{
+  "name": "ssh-workspace-manager",
+  "displayName": "SSH Workspace Manager",
+  "description": "在独立管理页整理 SSH 项目文件夹，并浏览远程目录。",
+  "version": "0.1.0",
+  "publisher": "katcuu",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "ssh",
+    "remote",
+    "workspace",
+    "folder"
+  ],
+  "main": "./dist/extension.js",
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:sshWorkspaceManager.launcher"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "sshWorkspaceManager.openDashboard",
+        "title": "SSH Manager: 打开管理页 / Open Dashboard",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "sshWorkspaceManager.saveCurrentFolders",
+        "title": "SSH Manager: 记录当前远程文件夹"
+      },
+      {
+        "command": "sshWorkspaceManager.selectServer",
+        "title": "SSH Manager: 查看服务器项目",
+        "icon": "$(server)"
+      },
+      {
+        "command": "sshWorkspaceManager.addServer",
+        "title": "SSH Manager: 新增服务器",
+        "icon": "$(add)"
+      },
+      {
+        "command": "sshWorkspaceManager.removeServer",
+        "title": "SSH Manager: 删除服务器",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "sshWorkspaceManager.refreshServers",
+        "title": "SSH Manager: 刷新服务器",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "sshWorkspaceManager.editConfig",
+        "title": "SSH Manager: 编辑 SSH 配置",
+        "icon": "$(settings-gear)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sshWorkspaceManager",
+          "title": "SSH Manager",
+          "icon": "media/activity-bar.svg"
+        }
+      ]
+    },
+    "views": {
+      "sshWorkspaceManager": [
+        {
+          "id": "sshWorkspaceManager.launcher",
+          "name": "服务器",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "sshWorkspaceManager.addServer",
+          "when": "view == sshWorkspaceManager.launcher",
+          "group": "navigation@1"
+        },
+        {
+          "command": "sshWorkspaceManager.refreshServers",
+          "when": "view == sshWorkspaceManager.launcher",
+          "group": "navigation@2"
+        },
+        {
+          "command": "sshWorkspaceManager.editConfig",
+          "when": "view == sshWorkspaceManager.launcher",
+          "group": "navigation@3"
+        },
+        {
+          "command": "sshWorkspaceManager.openDashboard",
+          "when": "view == sshWorkspaceManager.launcher",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "sshWorkspaceManager.removeServer",
+          "when": "view == sshWorkspaceManager.launcher && viewItem == sshServer",
+          "group": "inline@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "sshWorkspaceManager.selectServer",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SSH Workspace Manager",
+      "properties": {
+        "sshWorkspaceManager.sshPath": {
+          "type": "string",
+          "default": "ssh",
+          "scope": "machine",
+          "markdownDescription": "本机 OpenSSH 可执行文件。用于 `ssh -G` 解析连接配置；留默认值时从 PATH 查找。"
+        },
+        "sshWorkspaceManager.recordFolders": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "description": "自动记录此窗口实际打开的 SSH 工作区根目录；不记录源码文件。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "test": "tsx --test test/*.test.ts",
+    "package": "node scripts/package.mjs",
+    "vscode:prepublish": "npm run check && npm run build"
+  },
+  "dependencies": {
+    "proper-lockfile": "^4.1.2",
+    "ssh2": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/proper-lockfile": "^4.1.4",
+    "@types/ssh2": "^1.15.0",
+    "@types/vscode": "~1.99.0",
+    "@vscode/vsce": "^3.7.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/katcuu/vscode_ssh_workspace_manager.git"
+  },
+  "homepage": "https://github.com/katcuu/vscode_ssh_workspace_manager#readme",
+  "bugs": {
+    "url": "https://github.com/katcuu/vscode_ssh_workspace_manager/issues"
+  },
+  "extensionDependencies": [
+    "ms-vscode-remote.remote-ssh"
+  ]
+}

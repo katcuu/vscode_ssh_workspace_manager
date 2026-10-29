@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}}; script-src 'nonce-{{nonce}}';">
+  <link rel="stylesheet" href="{{style}}">
+  <title>SSH Workspace Manager</title>
+</head>
+<body>
+  <header>
+    <div><p class="eyebrow">SSH WORKSPACE MANAGER</p><h1>项目文件夹</h1><p id="serverLabel" class="muted">从左侧选择服务器</p></div>
+    <div class="actions"><button id="record">记录当前文件夹</button></div>
+  </header>
+  <p id="notice" role="status" hidden></p>
+    <main>
+      <section class="saved">
+        <div class="section-heading"><div><h2 id="folderTitle">已保存的文件夹</h2><p id="folderCount" class="muted"></p></div><button id="addFolder">手动添加路径</button></div>
+        <div class="filter"><input id="search" type="search" placeholder="搜索名称、完整路径或服务器" aria-label="搜索文件夹"><label><input id="favoritesOnly" type="checkbox"> 只看收藏</label></div>
+        <div id="folders"></div>
+      </section>
+      <section class="browser">
+        <div class="section-heading"><div><h2>打开新文件夹</h2><p id="browseServer" class="muted">先选择一台服务器</p></div><div class="actions"><button id="connect" class="primary">连接并浏览</button><button id="disconnect">取消 / 断开</button></div></div>
+        <p id="connectionStatus" role="status" class="connection">未连接</p>
+        <div class="pathbar"><button id="up" aria-label="上一级">↑</button><input id="path" placeholder="连接后显示远程路径；或输入 /home/user/projects" aria-label="远程绝对路径"><button id="go">前往</button><button id="refresh">刷新</button></div>
+        <div class="browse-options"><nav id="breadcrumbs" aria-label="路径导航"></nav><label><input id="showHidden" type="checkbox"> 隐藏目录</label></div>
+        <div id="directories" class="directories" aria-label="远程文件夹列表"><p class="empty">连接后在这里浏览服务端文件夹。单击选中，双击进入。</p></div>
+        <div class="open-target"><span class="muted">将打开</span><code id="target">—</code><div class="actions"><button id="saveTarget">☆ 收藏</button><button id="openCurrent">当前窗口打开</button><button id="openNew" class="primary">新窗口打开</button></div></div>
+        <p class="muted footnote">优先使用密钥 / agent，必要时提示输入密码。打开文件夹时，Remote SSH 可能再次请求认证。</p>
+      </section>
+    </main>
+  <script nonce="{{nonce}}" src="{{script}}"></script>
+</body>
+</html>
