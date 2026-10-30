@@ -2,7 +2,7 @@
   'use strict';
   const vscode = acquireVsCodeApi();
   const $ = id => document.getElementById(id);
-  const state = { servers: [], folders: [], browsePaths: {}, alias: undefined, path: '', entries: [], selected: undefined, connected: false, busy: false, initialized: false };
+  const state = { servers: [], folders: [], browsePaths: {}, view: 'all', alias: undefined, path: '', entries: [], selected: undefined, connected: false, busy: false, initialized: false };
   const send = (type, args = {}) => vscode.postMessage({ type, ...args });
   const button = (text, action, className = '') => {
     const element = document.createElement('button'); element.textContent = text; element.className = className;
@@ -15,7 +15,9 @@
     $('notice').textContent = message; $('notice').className = error ? 'error' : ''; $('notice').hidden = false;
   }
 
-  function chooseServer(alias, initialPath) {
+  function chooseView(view, alias, initialPath) {
+    state.view = view || 'all';
+    $('favoritesOnly').checked = false; $('search').value = '';
     state.alias = alias; state.path = ''; state.entries = []; state.selected = undefined; state.connected = false; state.busy = false;
     $('path').value = initialPath || '';
     $('connectionStatus').textContent = alias ? '未连接；点击「连接并浏览」开始' : '从左侧选择具体服务器后可连接并浏览。';
@@ -25,43 +27,67 @@
 
   function renderServerLabel() {
     const server = state.servers.find(server => server.alias === state.alias);
-    $('serverLabel').textContent = server ? `${server.label} · ${server.alias}` : state.servers.length ? '全部服务器' : '点击左侧服务器栏的 + 添加第一台服务器';
+    const titles = { all: '全部服务器项目', local: '本地文件夹', history: '最近打开的项目', favorites: '所有收藏项目' };
+    $('serverLabel').textContent = state.view === 'server' ? `${server?.label || state.alias} · ${state.alias}` : titles[state.view] || titles.all;
     $('browseServer').textContent = state.alias || '从左侧选择一台服务器';
-    $('folderTitle').textContent = state.alias ? `${server?.label || state.alias} 的文件夹` : '全部项目文件夹';
-    $('addFolder').disabled = !state.alias;
+    $('folderTitle').textContent = state.view === 'server' ? `${server?.label || state.alias} 的文件夹`
+      : state.view === 'local' ? '本地项目文件夹'
+        : state.view === 'history' ? '历史记录' : state.view === 'favorites' ? '收藏记录' : '全部服务器项目';
+    $('addFolder').hidden = state.view !== 'server' && state.view !== 'local';
+    $('addFolder').textContent = state.view === 'local' ? '添加本地文件夹' : '手动添加路径';
+    $('browser').hidden = state.view !== 'server';
+    $('favoriteFilter').hidden = state.view === 'favorites';
   }
 
   function renderFolders() {
     const query = $('search').value.toLocaleLowerCase().trim();
-    const folders = state.folders.filter(folder => (!state.alias || folder.alias === state.alias)
-      && (!$('favoritesOnly').checked || folder.favorite)
-      && `${folder.name} ${folder.path} ${folder.alias}`.toLocaleLowerCase().includes(query))
-      .sort((a, b) => Number(b.favorite) - Number(a.favorite) || (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0) || a.name.localeCompare(b.name));
+    const serverLabels = new Map(state.servers.map(server => [server.alias, server.label]));
+    const folders = state.folders.filter(folder => {
+      if (state.view === 'server' && (folder.kind !== 'remote' || folder.alias !== state.alias)) return false;
+      if (state.view === 'all' && (folder.kind !== 'remote' || !serverLabels.has(folder.alias))) return false;
+      if (state.view === 'local' && folder.kind !== 'local') return false;
+      if (state.view === 'history' && !folder.lastOpenedAt) return false;
+      if (state.view === 'favorites' && !folder.favorite) return false;
+      return (!$('favoritesOnly').checked || folder.favorite)
+        && `${folder.name} ${folder.path} ${folder.kind === 'remote' ? `${folder.alias} ${serverLabels.get(folder.alias) || ''}` : '本地文件'}`.toLocaleLowerCase().includes(query);
+    }).sort((a, b) => (state.view === 'history' ? 0 : Number(b.favorite) - Number(a.favorite))
+      || (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0) || a.name.localeCompare(b.name));
     $('folderCount').textContent = `${folders.length} 个文件夹`;
     $('folders').replaceChildren();
     for (const folder of folders) {
       const row = document.createElement('div'); row.className = 'folder';
       const details = document.createElement('div');
       const title = document.createElement('span'); title.className = 'folder-name'; title.textContent = folder.name;
-      const date = document.createElement('span'); date.className = 'muted'; date.textContent = folder.lastOpenedAt ? new Date(folder.lastOpenedAt).toLocaleString() : '尚未打开';
-      if (!state.alias) date.textContent = `${folder.alias} · ${date.textContent}`;
+      const label = serverLabels.get(folder.alias);
+      const source = folder.kind === 'local' ? '本地文件'
+        : `SSH · ${label && label !== folder.alias ? `${label} (${folder.alias})` : folder.alias}`;
+      const date = document.createElement('span'); date.className = 'muted';
+      date.textContent = `${source} · ${folder.lastOpenedAt ? new Date(folder.lastOpenedAt).toLocaleString() : '尚未打开'}`;
       const code = document.createElement('code'); code.className = 'folder-path'; code.textContent = folder.path;
       details.append(title, date, code);
       const actions = document.createElement('div'); actions.className = 'actions';
-      const favorite = button(folder.favorite ? '★' : '☆', () => send('favorite', { id: folder.id }));
-      favorite.title = folder.favorite ? '取消收藏，保留文件夹记录' : '收藏此文件夹';
-      favorite.setAttribute('aria-label', favorite.title);
-      const remove = button('删除记录', () => send('remove', { id: folder.id }));
-      remove.title = '删除此文件夹的收藏和历史记录；服务器上的文件夹保留';
-      remove.setAttribute('aria-label', `删除记录：${folder.name}`);
-      actions.append(favorite,
+      if (state.view !== 'favorites') {
+        const favorite = button(folder.favorite ? '★' : '☆', () => send('favorite', { id: folder.id }));
+        favorite.title = folder.favorite ? '取消收藏，保留历史记录' : '收藏此文件夹';
+        favorite.setAttribute('aria-pressed', String(folder.favorite));
+        favorite.setAttribute('aria-label', favorite.title); actions.append(favorite);
+      }
+      const remove = button(state.view === 'favorites' ? '取消收藏' : '删除记录',
+        () => send(state.view === 'favorites' ? 'unfavorite' : 'remove', { id: folder.id }));
+      remove.title = state.view === 'favorites' ? '取消收藏，保留历史记录' : '删除此项目的收藏和历史记录，实际文件保留';
+      remove.setAttribute('aria-label', `${state.view === 'favorites' ? '取消收藏' : '删除记录'}：${folder.name}`);
+      actions.append(
         button('重命名', () => send('rename', { id: folder.id })),
-        button('当前窗口', () => send('open', { alias: folder.alias, path: folder.path, mode: 'current' })),
-        button('新窗口', () => send('open', { alias: folder.alias, path: folder.path, mode: 'new' })),
+        button('当前窗口', () => send('open', { id: folder.id, mode: 'current' })),
+        button('新窗口', () => send('open', { id: folder.id, mode: 'new' })),
         remove);
       row.append(details, actions); $('folders').append(row);
     }
-    if (!folders.length) $('folders').append(paragraph(query ? '没有匹配的文件夹。' : '暂无记录。可以手动添加路径，或浏览远程目录后收藏。', 'empty'));
+    if (!folders.length) $('folders').append(paragraph(query ? '没有匹配的文件夹。'
+      : state.view === 'history' ? '还没有打开过的文件夹。'
+        : state.view === 'favorites' ? '还没有收藏的文件夹。'
+          : state.view === 'local' ? '暂无本地记录。打开本地项目后会自动记录，也可以手动添加。'
+            : '暂无记录。打开服务器项目后会自动记录，也可以浏览远程目录。', 'empty'));
   }
 
   function navigate(path) {
@@ -111,7 +137,7 @@
   }
 
   $('record').addEventListener('click', () => send('recordCurrent'));
-  $('addFolder').addEventListener('click', () => send('addFolder', { alias: state.alias }));
+  $('addFolder').addEventListener('click', () => send(state.view === 'local' ? 'addLocalFolder' : 'addFolder', { alias: state.alias }));
   $('search').addEventListener('input', renderFolders);
   $('favoritesOnly').addEventListener('change', renderFolders);
   $('showHidden').addEventListener('change', () => { state.selected = undefined; renderBrowser(); });
@@ -130,7 +156,8 @@
     switch (message.type) {
       case 'snapshot':
         state.servers = message.servers; state.folders = message.folders; state.browsePaths = message.browsePaths;
-        if (!state.initialized || state.alias !== message.selectedAlias) chooseServer(message.selectedAlias, message.initialPath);
+        if (!state.initialized || state.alias !== message.selectedAlias || state.view !== message.selectedView)
+          chooseView(message.selectedView, message.selectedAlias, message.initialPath);
         state.initialized = true;
         renderServerLabel(); renderFolders(); renderBrowser();
         break;

@@ -1,8 +1,8 @@
 {
   "name": "ssh-workspace-manager",
   "displayName": "SSH Workspace Manager",
-  "description": "在独立管理页整理 SSH 项目文件夹，并浏览远程目录。",
-  "version": "0.1.0",
+  "description": "在独立管理页整理本地与 SSH 项目文件夹，并浏览远程目录。",
+  "version": "0.2.0",
   "publisher": "katcuu",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -43,7 +43,7 @@
       },
       {
         "command": "sshWorkspaceManager.saveCurrentFolders",
-        "title": "SSH Manager: 记录当前远程文件夹"
+        "title": "SSH Manager: 记录当前工作区文件夹"
       },
       {
         "command": "sshWorkspaceManager.selectServer",
@@ -84,7 +84,7 @@
       "sshWorkspaceManager": [
         {
           "id": "sshWorkspaceManager.launcher",
-          "name": "服务器",
+          "name": "项目",
           "visibility": "visible"
         }
       ]
@@ -139,7 +139,7 @@
           "type": "boolean",
           "default": true,
           "scope": "machine",
-          "description": "自动记录此窗口实际打开的 SSH 工作区根目录；不记录源码文件。"
+          "description": "自动记录此窗口实际打开的本地或 SSH 工作区根目录；不记录源码文件。"
         }
       }
     }

@@ -15,11 +15,11 @@
   <p id="notice" role="status" hidden></p>
     <main>
       <section class="saved">
-        <div class="section-heading"><div><h2 id="folderTitle">已保存的文件夹</h2><p id="folderCount" class="muted"></p></div><button id="addFolder">手动添加路径</button></div>
-        <div class="filter"><input id="search" type="search" placeholder="搜索名称、完整路径或服务器" aria-label="搜索文件夹"><label><input id="favoritesOnly" type="checkbox"> 只看收藏</label></div>
+        <div class="section-heading"><div><h2 id="folderTitle">已保存的文件夹</h2><p id="folderCount" class="muted"></p></div><button id="addFolder" hidden></button></div>
+        <div class="filter"><input id="search" type="search" placeholder="搜索项目名称、完整路径或服务器" aria-label="搜索文件夹"><label id="favoriteFilter"><input id="favoritesOnly" type="checkbox"> 只看收藏</label></div>
         <div id="folders"></div>
       </section>
-      <section class="browser">
+      <section id="browser" class="browser" hidden>
         <div class="section-heading"><div><h2>打开新文件夹</h2><p id="browseServer" class="muted">先选择一台服务器</p></div><div class="actions"><button id="connect" class="primary">连接并浏览</button><button id="disconnect">取消 / 断开</button></div></div>
         <p id="connectionStatus" role="status" class="connection">未连接</p>
         <div class="pathbar"><button id="up" aria-label="上一级">↑</button><input id="path" placeholder="连接后显示远程路径；或输入 /home/user/projects" aria-label="远程绝对路径"><button id="go">前往</button><button id="refresh">刷新</button></div>

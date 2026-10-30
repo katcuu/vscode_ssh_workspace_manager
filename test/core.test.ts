@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { utils } from 'ssh2';
-import { authorityForAlias, emptyCatalog, hideServer, makeFolder, normalizeRemotePath, restoreServer, validateCatalog, visibleServers } from '../src/model';
+import { authorityForAlias, emptyCatalog, hideServer, localFolderId, makeFolder, makeLocalFolder, normalizeLocalPath, normalizeRemotePath, recordFolder, restoreServer, validateCatalog, visibleServers } from '../src/model';
 import { addSshHost, hostBlock } from '../src/sshConfigWriter';
 import { CatalogStore } from '../src/store';
 import { configWords, parseResolvedConfig, readHostAliases } from '../src/sshConfig';
@@ -23,6 +23,51 @@ test('Linux paths preserve Unicode, spaces, # and percent; reject relative/contr
   for (const value of ['relative', '~', '/abc\0def', '/a\nb']) assert.throws(() => normalizeRemotePath(value));
   assert.throws(() => authorityForAlias('-oProxyCommand=cmd'));
   assert.throws(() => makeFolder('dev', '/x', 'ssh-remote+prod'));
+});
+
+test('local folders use stable platform paths and update one history record', () => {
+  const data = emptyCatalog();
+  const localPath = path.join(tmpdir(), 'ssh manager', 'project');
+  const folder = makeLocalFolder(`${localPath}${path.sep}`);
+  assert.equal(folder.kind, 'local');
+  assert.equal(folder.path, localPath);
+  assert.equal(folder.name, 'project');
+  assert.equal(folder.id, localFolderId(folder.path));
+  assert.equal(normalizeLocalPath(folder.path), folder.path);
+  recordFolder(data, folder, 100);
+  data.folders[0].favorite = true;
+  data.folders[0].name = 'Renamed';
+  recordFolder(data, makeLocalFolder(folder.path), 200);
+  assert.equal(data.folders.length, 1);
+  assert.equal(data.folders[0].lastOpenedAt, 200);
+  assert.equal(data.folders[0].favorite, true);
+  assert.equal(data.folders[0].name, 'Renamed');
+  recordFolder(data, folder, 150);
+  assert.equal(data.folders[0].lastOpenedAt, 200, 'Delayed writes cannot move history backwards');
+  assert.notEqual(folder.id, makeFolder('dev', '/tmp/ssh manager/project').id);
+  assert.equal(normalizeLocalPath(path.parse(localPath).root), path.parse(localPath).root);
+  if (process.platform === 'win32') {
+    assert.equal(makeLocalFolder('C:\\Projects\\Code').id, makeLocalFolder('c:/projects/code/').id);
+    assert.equal(normalizeLocalPath('\\\\server\\share\\code\\'), '\\\\server\\share\\code');
+  } else {
+    assert.notEqual(makeLocalFolder('/tmp/code\\').id, makeLocalFolder('/tmp/code').id);
+  }
+  assert.deepEqual(visibleServers(data, []), [], 'Local folders do not create SSH server entries');
+  assert.equal(validateCatalog(JSON.parse(JSON.stringify(data))).folders[0].id, folder.id);
+  assert.throws(() => normalizeLocalPath('relative/project'));
+});
+
+test('schema 1 remote records migrate to schema 2 without losing metadata', () => {
+  const folder = { ...makeFolder('dev', '/projects/code'), favorite: true, lastOpenedAt: 123 } as Record<string, unknown>;
+  delete folder.kind;
+  const legacy = { ...emptyCatalog(), schemaVersion: 1, folders: [folder] };
+  delete (legacy as { hiddenServers?: string[] }).hiddenServers;
+  const migrated = validateCatalog(JSON.parse(JSON.stringify(legacy)));
+  assert.equal(migrated.schemaVersion, 2);
+  assert.equal(migrated.folders[0].kind, 'remote');
+  assert.equal(migrated.folders[0].favorite, true);
+  assert.equal(migrated.folders[0].lastOpenedAt, 123);
+  assert.equal(migrated.folders[0].path, '/projects/code');
 });
 
 test('SSH config enumerates concrete aliases, quoted values, absolute Include and cycles', async t => {

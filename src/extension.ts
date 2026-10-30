@@ -4,10 +4,10 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { watch, FSWatcher } from 'node:fs';
 import { homedir } from 'node:os';
 import * as path from 'node:path';
-import { aliasForAuthority, authorityForAlias, hideServer, makeFolder, normalizeRemotePath, RemoteEntry, restoreServer, ServerInfo, validAlias, validateCatalog, visibleServers } from './model';
+import { aliasForAuthority, authorityForAlias, FolderTarget, hideServer, makeFolder, makeLocalFolder, normalizeRemotePath, recordFolder, RemoteEntry, restoreServer, ServerInfo, validAlias, validateCatalog, visibleServers } from './model';
 import { expandHome, readHostAliases, resolveSshConfig } from './sshConfig';
 import { addSshHost } from './sshConfigWriter';
-import { ServerItem, ServerTree } from './serverTree';
+import { ServerItem, ServerTree, SidebarView } from './serverTree';
 import { CatalogStore } from './store';
 import { connectSftp, SftpSession } from './sftp';
 
@@ -38,6 +38,7 @@ class WorkspaceManager implements vscode.Disposable {
   private debounce?: NodeJS.Timeout;
   private servers: ServerInfo[] = [];
   private configFile = '';
+  private selectedView: SidebarView = 'all';
   private selectedAlias?: string;
   private selectionInitialized = false;
   private snapshotSequence = 0;
@@ -68,8 +69,8 @@ class WorkspaceManager implements vscode.Disposable {
       await this.snapshot();
       this.watchStore();
     } catch (error) { this.report(error); }
-    this.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
-      void this.recordCurrentFolders(false).catch(error => this.report(error));
+    this.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(event => {
+      void this.recordCurrentFolders(false, event.added).catch(error => this.report(error));
     }), vscode.window.onDidChangeWindowState(state => {
       if (state.focused) void this.snapshot().catch(error => this.report(error));
     }), vscode.workspace.onDidChangeConfiguration(event => {
@@ -117,18 +118,22 @@ class WorkspaceManager implements vscode.Disposable {
     this.view.message = this.servers.length ? undefined : '点击 + 添加服务器，或导入 SSH 配置。';
     const current = this.currentRemote();
     if (!this.selectionInitialized) {
-      this.selectedAlias = this.servers.some(server => server.alias === current?.alias) ? current?.alias : this.servers[0]?.alias;
+      this.selectedAlias = this.servers.some(server => server.alias === current?.alias) ? current?.alias : undefined;
+      this.selectedView = this.selectedAlias ? 'server'
+        : (vscode.workspace.workspaceFolders || []).some(folder => folder.uri.scheme === 'file') ? 'local' : 'all';
       this.selectionInitialized = true;
       this.lastBrowsePath = this.selectedAlias ? (Object.hasOwn(data.browsePaths, this.selectedAlias) ? data.browsePaths[this.selectedAlias] : undefined)
         || (current?.alias === this.selectedAlias ? current.path : undefined) : undefined;
     } else if (this.selectedAlias && !this.servers.some(server => server.alias === this.selectedAlias)) {
       this.disconnect(); this.selectedAlias = undefined; this.lastBrowsePath = undefined;
+      if (this.selectedView === 'server') this.selectedView = 'all';
     }
     this.post({ type: 'snapshot', servers: this.servers,
-      folders: data.folders.filter(folder => !data.hiddenServers.includes(folder.alias)),
-      browsePaths: data.browsePaths, selectedAlias: this.selectedAlias, initialPath: this.lastBrowsePath || '',
+      folders: data.folders,
+      browsePaths: data.browsePaths, selectedAlias: this.selectedAlias, selectedView: this.selectedView,
+      initialPath: this.lastBrowsePath || '',
       recording: vscode.workspace.getConfiguration('sshWorkspaceManager').get('recordFolders', true) });
-    const item = this.tree.find(this.selectedAlias);
+    const item = this.tree.find(this.selectedView, this.selectedView === 'server' ? this.selectedAlias : undefined);
     if (this.view.visible && item) await this.view.reveal(item, { select: true, focus: false });
   }
 
@@ -169,29 +174,26 @@ class WorkspaceManager implements vscode.Disposable {
     return undefined;
   }
 
-  async recordCurrentFolders(manual: boolean): Promise<void> {
+  async recordCurrentFolders(manual: boolean, workspaceFolders = vscode.workspace.workspaceFolders || []): Promise<void> {
     if (!manual && !vscode.workspace.getConfiguration('sshWorkspaceManager').get('recordFolders', true)) return;
-    const folders = (vscode.workspace.workspaceFolders || []).flatMap(folder => {
+    const folders: FolderTarget[] = [];
+    for (const folder of workspaceFolders) {
       const alias = folder.uri.scheme === 'vscode-remote' && aliasForAuthority(folder.uri.authority);
-      return alias ? [makeFolder(alias, folder.uri.path, folder.uri.authority)] : [];
-    });
+      const target = folder.uri.scheme === 'file' ? makeLocalFolder(folder.uri.fsPath)
+        : alias ? makeFolder(alias, folder.uri.path, folder.uri.authority) : undefined;
+      if (target) folders.push({ ...target, name: folder.name || target.name });
+    }
     if (!folders.length) {
-      if (manual) void vscode.window.showInformationMessage('当前窗口没有可记录的 SSH 工作区文件夹。');
+      if (manual) void vscode.window.showInformationMessage('当前窗口没有可记录的本地或 SSH 工作区文件夹。');
       return;
     }
-    let recorded = 0;
+    const openedAt = Date.now();
     await this.store.update(data => {
-      for (const folder of folders) {
-        if (data.hiddenServers.includes(folder.alias)) continue;
-        recorded += 1;
-        const existing = data.folders.find(value => value.id === folder.id);
-        if (existing) existing.lastOpenedAt = Date.now();
-        else data.folders.push({ ...folder, lastOpenedAt: Date.now() });
-      }
+      for (const folder of folders) recordFolder(data, folder, openedAt);
     });
     this.watchStore();
     await this.snapshot();
-    if (manual) void vscode.window.showInformationMessage(recorded ? `已记录 ${recorded} 个 SSH 文件夹。` : '当前服务器已从管理器删除，请先重新导入。');
+    if (manual) void vscode.window.showInformationMessage(`已记录 ${folders.length} 个文件夹。`);
   }
 
   private requireAlias(alias: unknown): string {
@@ -210,7 +212,7 @@ class WorkspaceManager implements vscode.Disposable {
             : await vscode.workspace.openTextDocument(uri.with({ scheme: 'untitled' }));
           await vscode.window.showTextDocument(document); return;
         }
-        case 'selectServer': await this.selectServer(item?.alias); return;
+        case 'selectServer': await this.selectView(item?.view || 'all', item?.alias); return;
         case 'addServer': await this.addServer(); return;
         case 'removeServer': {
           const alias = item?.alias || (await vscode.window.showQuickPick(this.servers.map(server => ({ label: server.label, alias: server.alias })), { title: '删除服务器' }))?.alias;
@@ -227,10 +229,10 @@ class WorkspaceManager implements vscode.Disposable {
     } catch (error) { this.report(error); }
   }
 
-  private async selectServer(value?: string): Promise<void> {
-    const alias = value === undefined ? undefined : this.requireAlias(value);
-    if (alias !== this.selectedAlias) {
-      this.disconnect(); this.selectedAlias = alias; this.selectionInitialized = true;
+  private async selectView(view: SidebarView, value?: string): Promise<void> {
+    const alias = view === 'server' ? this.requireAlias(value) : undefined;
+    if (view !== this.selectedView || alias !== this.selectedAlias) {
+      this.disconnect(); this.selectedView = view; this.selectedAlias = alias; this.selectionInitialized = true;
       const generation = this.generation;
       const data = await this.store.read();
       if (generation !== this.generation) return;
@@ -285,8 +287,8 @@ class WorkspaceManager implements vscode.Disposable {
     }
     if (!alias) return;
     await this.store.update(data => restoreServer(data, alias!));
-    this.watchStore(); await this.snapshot(); await this.selectServer(alias);
-    const item = this.tree.find(alias);
+    this.watchStore(); await this.snapshot(); await this.selectView('server', alias);
+    const item = this.tree.find('server', alias);
     if (item) await this.view.reveal(item, { select: true, focus: false });
   }
 
@@ -317,13 +319,22 @@ class WorkspaceManager implements vscode.Disposable {
         });
         this.watchStore(); await this.snapshot(); this.post({ type: 'notice', message: '文件夹已收藏。' }); return;
       }
+      case 'unfavorite': {
+        if (typeof message.id !== 'string') return;
+        await this.store.update(data => {
+          const folder = data.folders.find(value => value.id === message.id);
+          if (folder) folder.favorite = false;
+        });
+        await this.snapshot();
+        this.post({ type: 'notice', message: '已从收藏中移除，历史记录仍保留。' }); return;
+      }
       case 'remove': {
         if (typeof message.id !== 'string') return;
         await this.store.update(data => {
           data.folders = data.folders.filter(folder => folder.id !== message.id);
         });
         await this.snapshot();
-        this.post({ type: 'notice', message: '已删除此文件夹的收藏和历史记录，服务器上的文件夹保留。再次打开后会重新记录。' });
+        this.post({ type: 'notice', message: '已删除此文件夹的收藏和历史记录，实际文件保留。再次打开后会重新记录。' });
         return;
       }
       case 'favorite': case 'rename': {
@@ -345,19 +356,37 @@ class WorkspaceManager implements vscode.Disposable {
         await this.snapshot(); return;
       }
       case 'open': {
-        const alias = this.requireAlias(message.alias);
-        const remotePath = normalizeRemotePath(message.path);
         if (message.mode !== 'current' && message.mode !== 'new') throw new Error('打开方式无效。');
+        let uri: vscode.Uri;
         if (message.fromBrowser === true) {
+          const alias = this.requireAlias(message.alias);
+          const remotePath = normalizeRemotePath(message.path);
           if (alias !== this.selectedAlias || !this.lastBrowsePath) throw new Error('请先连接并浏览目标目录。');
           await this.verifyDirectory(alias, remotePath);
+          uri = vscode.Uri.from({ scheme: 'vscode-remote', authority: authorityForAlias(alias), path: remotePath });
+        } else {
+          if (typeof message.id !== 'string') throw new Error('文件夹记录无效。');
+          const data = await this.store.read();
+          const folder = data.folders.find(value => value.id === message.id);
+          if (!folder) throw new Error('文件夹记录已删除，请刷新后重试。');
+          if (folder.kind === 'local') uri = vscode.Uri.file(folder.path);
+          else uri = vscode.Uri.from({ scheme: 'vscode-remote', authority: folder.authority, path: folder.path });
         }
-        if (!vscode.extensions.getExtension('ms-vscode-remote.remote-ssh')) {
+        if (uri.scheme === 'vscode-remote' && !vscode.extensions.getExtension('ms-vscode-remote.remote-ssh')) {
           throw new Error('请先安装 Microsoft Remote - SSH 扩展，再打开远程文件夹。');
         }
-        // Opening itself never records success; the destination extension host observes the workspace.
-        const uri = vscode.Uri.from({ scheme: 'vscode-remote', authority: authorityForAlias(alias), path: remotePath });
-        await vscode.commands.executeCommand('vscode.openFolder', uri, message.mode === 'new' ? { forceNewWindow: true } : { forceReuseWindow: true });
+        if (uri.scheme === 'file') {
+          const stat = await vscode.workspace.fs.stat(uri);
+          if (!(stat.type & vscode.FileType.Directory)) throw new Error('本地路径不是文件夹。');
+        }
+        // An existing workspace may be reused without activating another extension host.
+        const alreadyOpen = (vscode.workspace.workspaceFolders || []).filter(folder => folder.uri.toString() === uri.toString());
+        if (alreadyOpen.length) await this.recordCurrentFolders(false, alreadyOpen);
+        // Other targets enter history when the destination host observes the actual workspace.
+        await vscode.commands.executeCommand('vscode.openFolder', uri, {
+          ...(message.mode === 'new' ? { forceNewWindow: true } : { forceReuseWindow: true }),
+          ...(uri.scheme === 'file' ? { forceLocalWindow: true } : {})
+        });
         return;
       }
       case 'addFolder': {
@@ -367,6 +396,17 @@ class WorkspaceManager implements vscode.Disposable {
         if (value === undefined) return;
         const folder = makeFolder(alias, value);
         await this.store.update(data => { if (!data.folders.some(item => item.id === folder.id)) data.folders.push(folder); });
+        this.watchStore(); await this.snapshot(); return;
+      }
+      case 'addLocalFolder': {
+        const selected = await vscode.window.showOpenDialog({ defaultUri: vscode.Uri.file(homedir()),
+          canSelectFiles: false, canSelectFolders: true, canSelectMany: true, openLabel: '添加本地文件夹' });
+        if (!selected?.length) return;
+        if (selected.some(uri => uri.scheme !== 'file')) throw new Error('请选择本机文件夹，远程目录请从对应服务器添加。');
+        const folders = selected.map(uri => makeLocalFolder(uri.fsPath));
+        await this.store.update(data => {
+          for (const folder of folders) if (!data.folders.some(item => item.id === folder.id)) data.folders.push(folder);
+        });
         this.watchStore(); await this.snapshot(); return;
       }
       case 'recordCurrent': await this.recordCurrentFolders(true); return;
