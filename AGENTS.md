@@ -33,6 +33,8 @@
 
 所有目录元数据修改通过 `CatalogStore.update()`；不能用 Webview 的旧快照覆盖存储。修改格式必须兼容既有数据，并同步迁移和测试。
 
+正式版本标签、GitHub Release 和 Marketplace OIDC 配置见 [发布指南](docs/RELEASE.zh-CN.md)。
+
 ## 验证和交付
 
 使用 Node.js 22，与 CI 保持一致：

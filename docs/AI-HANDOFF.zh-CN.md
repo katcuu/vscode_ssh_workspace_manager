@@ -194,16 +194,11 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 
 `README.md`、`CHANGELOG.md`、`PRIVACY.md` 是使用者文档。不要把 AI 接手过程、研究讨论、私人测试路径或内部待办塞进市场详情页。`.vscodeignore` 采用允许列表；AI 手册、AGENTS、测试、源码及开发文档均不打入 VSIX，运行时由 dist 提供。
 
-需要发布新版本时，按本次授权范围完成以下步骤：
+当前正式版本通过匹配版本号的 Git tag 发布，完整流程和 Trusted Publishing 的一次性配置见 [自动打包与发布](RELEASE.zh-CN.md)。分支 push / PR 只运行三平台检查并生成 30 天有效的 Actions VSIX；推送 vX.Y.Z tag 且检查通过后，CI 会创建附带 VSIX 的 GitHub Release，并使用 OIDC 上传同一 VSIX 到 Marketplace。
 
-1. 同步 `package.json`、`package-lock.json` 的版本及 CHANGELOG，检查用户说明、隐私说明和扩展身份未遗漏。
-2. 完成相关测试、类型检查、真实宿主验收和 `npm run package`。检查 VSIX 的 manifest、运行时、页面资源、图标、用户文档和第三方许可证；新增资源需同步允许列表。
-3. 使用 `code --install-extension <VSIX绝对路径> --force` 在测试环境安装并重新加载窗口，核对运行的是新版本。不要为测试关闭用户其他 SSH 窗口。
-4. 将本次代码提交并推送到既有 GitHub 仓库，核对 CI。`artifacts/` 是本地交付目录，不提交安装包和私人截图。
-5. 使用发布者 `katcuu` 在官方管理页上传新版本 VSIX，或在已有合法发布凭据的环境使用官方 vsce 发布。无需为了文档修改自动发新版。
-6. 上传后等待验证，检查管理页状态及公开详情页实际版本。只有确认上线后才更新“已发布”记录。
+Marketplace 自动发布需要发布者 katcuu 在 Trusted Publishing 中登记仓库 katcuu/vscode_ssh_workspace_manager 和 workflow 文件 ci.yml。此策略尚未配置前，市场发布 job 会失败，但 GitHub Release 仍会完成。不要创建 PAT 或把凭据写入仓库。Marketplace 上传后仍需等待平台验证。
 
-用户已创建发布者并完成过 0.1.0 上传。需要账号登录、协议确认或 CAPTCHA 时由用户在浏览器处理；不要索取、记录或提交密码 / PAT。0.2.0 是否后续已发布，接手时重新核对。
+发布时先更新 package.json、package-lock.json 和 CHANGELOG，推送 main 并确认 CI 成功，再推送匹配的版本 tag。不要只因文档变更就发布新版。VSIX 和私人截图不提交到仓库。用户已创建发布者并完成过 0.1.0 上传；0.2.0 是否已发布仍需重新核对。需要账号登录或协议确认时由用户在浏览器处理。
 
 ## 9. 后续任务如何交接
 

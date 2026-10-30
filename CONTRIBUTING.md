@@ -14,6 +14,8 @@ npm run package
 
 VS Code 打开仓库后按 F5，启动独立扩展开发宿主。`npm run package` 自动检查、构建，并生成 `artifacts/ssh-workspace-manager-<version>.vsix`。发布包只包含运行时、界面资源、用户文档及许可证。
 
+正式版本标签、GitHub Release 和 Marketplace 自动发布的操作方式见 [发布指南](docs/RELEASE.zh-CN.md)。
+
 ## 结构
 
 - `src/extension.ts`：VS Code 生命周期、命令、工作区观察和管理页控制。
