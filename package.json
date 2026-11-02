@@ -2,7 +2,7 @@
   "name": "ssh-workspace-manager",
   "displayName": "SSH Workspace Manager",
   "description": "在独立管理页整理本地与 SSH 项目文件夹，并浏览远程目录。",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "katcuu",
   "license": "MIT",
   "icon": "media/icon.png",

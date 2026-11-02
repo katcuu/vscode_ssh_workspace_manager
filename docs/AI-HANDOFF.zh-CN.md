@@ -1,6 +1,6 @@
 # SSH Workspace Manager 开发交接手册
 
-维护日期：2026-11-02。发布基线：`v0.2.0`，提交 `4da33cd6c77229a896ace11296993d6f8baca581`；本轮包含尚未发布的 Windows SFTP 修复。
+维护日期：2026-11-02。已发布基线：`v0.2.0`，提交 `4da33cd6c77229a896ace11296993d6f8baca581`；Windows SFTP 修复进入 `0.2.1` 发布候选。
 
 本手册用于让后续 AI 或开发者独立接手功能开发、定位问题和验证交付。入口规则见 [AGENTS.md](../AGENTS.md)，使用说明见 [README](../README.md)。具体行为和命令以当前源码、`package.json` 为准；修改实现时同步更新本文。
 
@@ -12,11 +12,11 @@
 | --- | --- |
 | 仓库 | [katcuu/vscode_ssh_workspace_manager](https://github.com/katcuu/vscode_ssh_workspace_manager) |
 | 扩展 / 发布者 | `katcuu.ssh-workspace-manager` / `katcuu`，MIT |
-| 版本与最低 API | `package.json` 为 `0.2.0`；VS Code `^1.99.0` |
+| 版本与最低 API | `package.json` 为 `0.2.1`；VS Code `^1.99.0` |
 | 平台 | macOS / Windows 客户端；Linux SSH 服务器 |
-| 本机交付 | 0.2.0 已发布（按用户提供信息）；本轮在 Windows 实测独立 SFTP 协议回退 |
-| 市场 | 用户确认当前发布版本为 0.2.0；本轮修复未发布 |
-| 自动验证 | 本轮 Windows Node 22.23.4：类型检查、14 个测试、构建、VSIX 打包和 VS Code 1.143.1 隔离扩展宿主 smoke 通过 |
+| 本机交付 | 0.2.0 已发布（按用户提供信息）；Windows 25H2 已实测独立 SFTP 认证回退 |
+| 市场 | 0.2.0 已发布；0.2.1 候选待核对 GitHub Actions 与 Marketplace 发布状态 |
+| 自动验证 | Windows Node 22.23.4：类型检查、14 个测试、构建、VSIX 打包和 VS Code 1.143.1 隔离扩展宿主 smoke 通过；macOS Node 22 复核类型检查、14 个测试及构建通过 |
 
 市场状态是交接时的记录，不是实时查询结果。继续发布前，核对 [Marketplace](https://marketplace.visualstudio.com/items?itemName=katcuu.ssh-workspace-manager) 与 [发布者管理页](https://marketplace.visualstudio.com/manage/publishers/katcuu)。不要把 GitHub 推送、本机安装或用户看到旧市场版本误认为发布失败。
 
@@ -213,7 +213,7 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 
 Marketplace 自动发布需要发布者 katcuu 在 Trusted Publishing 中登记仓库 katcuu/vscode_ssh_workspace_manager 和 workflow 文件 ci.yml。此策略尚未配置前，市场发布 job 会失败，但 GitHub Release 仍会完成。不要创建 PAT 或把凭据写入仓库。Marketplace 上传后仍需等待平台验证。
 
-发布时先更新 package.json、package-lock.json 和 CHANGELOG，推送 main 并确认 CI 成功，再推送匹配的版本 tag。不要只因文档变更就发布新版。VSIX 和私人截图不提交到仓库。用户已确认 0.2.0 已发布；本轮 Windows 修复尚未发布。需要账号登录或协议确认时由用户在浏览器处理。
+发布时先更新 package.json、package-lock.json 和 CHANGELOG，推送 main 并确认 CI 成功，再推送匹配的版本 tag。不要只因文档变更就发布新版。VSIX 和私人截图不提交到仓库。0.2.0 已发布；Windows 修复纳入 0.2.1，是否发布完成需核对 GitHub Actions 与 Marketplace 当前状态。需要账号登录或协议确认时由用户在浏览器处理。
 
 ## 9. 后续任务如何交接
 

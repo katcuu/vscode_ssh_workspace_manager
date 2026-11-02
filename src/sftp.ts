@@ -188,7 +188,7 @@ export async function connectSftp(config: ResolvedSshConfig, prompts: Connection
       diagnostics.event(stage, 'client-error', {}, error);
       const message = customError || (authenticationExhausted || error.level === 'client-authentication'
         ? new Error('SSH 认证失败。请确认密钥、agent 或密码；后台浏览暂不支持交互式多因素认证。', { cause: error })
-        : new Error(error.code === 'ENOTFOUND' || error.code === 'EAI_AGAIN' ? 'SSH 主机名解析失败，请检查服务器地址。'
+        : new Error(error.level === 'client-dns' || error.code === 'ENOTFOUND' || error.code === 'EAI_AGAIN' ? 'SSH 主机名解析失败，请检查服务器地址。'
           : error.code === 'ECONNREFUSED' ? 'SSH 连接被拒绝，请检查端口和服务器 SSH 服务。'
           : error.code === 'ETIMEDOUT' || error.level === 'client-timeout' ? 'SSH 连接或握手超时，请检查网络，或重试认证。'
           : stage === 'tcp' ? '无法建立 SSH 网络连接，请检查地址、端口和网络；可在“SSH Manager”输出中查看诊断。'
