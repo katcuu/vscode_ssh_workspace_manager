@@ -50,6 +50,8 @@
 
 连接时优先使用 SSH agent / 密钥，必要时弹出 VS Code 原生密码框。已知主机使用本机 `known_hosts` 校验；未知指纹需要核对并仅本次信任，已变化或撤销的密钥会拒绝连接。
 
+Windows 上即使 OpenSSH agent 未运行或没有可用密钥，也会继续尝试本机私钥和密码。若连接失败，可从命令面板运行 **SSH Manager: 显示连接诊断**，在 **SSH Manager** 输出中查看配置、网络、主机信任、认证和 SFTP 阶段；诊断不包含密码、私钥口令或私钥内容。
+
 后台浏览使用独立 SFTP 连接；打开编辑窗口时 Remote SSH 可能再次要求认证。后台浏览支持直连的 HostName、User、Port、IdentityFile 和 agent；ProxyJump、ProxyCommand、SSH 证书和交互式多因素认证暂不支持浏览，这些连接仍可通过已保存路径交给 Remote SSH 打开。
 
 ## 设置与数据

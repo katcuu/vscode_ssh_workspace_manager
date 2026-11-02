@@ -69,6 +69,10 @@
         "command": "sshWorkspaceManager.editConfig",
         "title": "SSH Manager: 编辑 SSH 配置",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "sshWorkspaceManager.showConnectionLog",
+        "title": "SSH Manager: 显示连接诊断"
       }
     ],
     "viewsContainers": {

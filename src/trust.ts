@@ -54,7 +54,7 @@ export async function readHostTrust(config: ResolvedSshConfig, key: Buffer): Pro
     try { return await readFile(file, 'utf8'); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
-      throw new Error('无法读取 known_hosts，已停止后台连接。');
+      throw new Error('无法读取 known_hosts，已停止后台连接。', { cause: error });
     }
   }))).join('\n');
   const host = config.hostKeyAlias || (config.port === 22 ? config.host : `[${config.host}]:${config.port}`);

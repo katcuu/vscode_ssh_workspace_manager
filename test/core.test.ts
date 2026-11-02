@@ -81,6 +81,8 @@ test('SSH config enumerates concrete aliases, quoted values, absolute Include an
   const resolved = parseResolvedConfig('dev', 'hostname 127.0.0.1\nuser coder\nport 2222\nidentityfile /keys/id\npasswordauthentication yes\nidentitiesonly yes\nuserknownhostsfile /tmp/known_hosts\n');
   assert.equal(resolved.port, 2222); assert.equal(resolved.identitiesOnly, true);
   assert.deepEqual(resolved.identityFiles, ['/keys/id']);
+  assert.deepEqual(parseResolvedConfig('dev', 'hostname 127.0.0.1\nuserknownhostsfile none\nglobalknownhostsfile none\n').knownHostsFiles, []);
+  assert.equal(parseResolvedConfig('dev', 'hostname 127.0.0.1\n').knownHostsFiles.length, 1);
   assert.throws(() => parseResolvedConfig('dev', 'proxyjump bastion\n'), /proxyjump/);
   assert.throws(() => parseResolvedConfig('dev', 'proxycommand nc host 22\n'), /proxycommand/);
 });

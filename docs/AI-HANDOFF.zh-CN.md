@@ -1,6 +1,6 @@
 # SSH Workspace Manager 开发交接手册
 
-维护日期：2026-10-30。实现基线：`0.2.0`，功能提交 `8e404a41f4afbcebe65492d3701b22fec8194196`。
+维护日期：2026-11-02。发布基线：`v0.2.0`，提交 `4da33cd6c77229a896ace11296993d6f8baca581`；本轮包含尚未发布的 Windows SFTP 修复。
 
 本手册用于让后续 AI 或开发者独立接手功能开发、定位问题和验证交付。入口规则见 [AGENTS.md](../AGENTS.md)，使用说明见 [README](../README.md)。具体行为和命令以当前源码、`package.json` 为准；修改实现时同步更新本文。
 
@@ -14,9 +14,9 @@
 | 扩展 / 发布者 | `katcuu.ssh-workspace-manager` / `katcuu`，MIT |
 | 版本与最低 API | `package.json` 为 `0.2.0`；VS Code `^1.99.0` |
 | 平台 | macOS / Windows 客户端；Linux SSH 服务器 |
-| 本机交付 | 0.2.0 已打包、安装并在 macOS VS Code 1.139.0 验收主要界面 |
-| 市场 | 0.1.0 此前已发布；本次 0.2.0 功能交付尚未发布到市场 |
-| 自动验证 | 11 个测试通过；Ubuntu、macOS、Windows 的 CI 检查通过 |
+| 本机交付 | 0.2.0 已发布（按用户提供信息）；本轮在 Windows 实测独立 SFTP 协议回退 |
+| 市场 | 用户确认当前发布版本为 0.2.0；本轮修复未发布 |
+| 自动验证 | 本轮 Windows Node 22.23.4：类型检查、14 个测试、构建、VSIX 打包和 VS Code 1.143.1 隔离扩展宿主 smoke 通过 |
 
 市场状态是交接时的记录，不是实时查询结果。继续发布前，核对 [Marketplace](https://marketplace.visualstudio.com/items?itemName=katcuu.ssh-workspace-manager) 与 [发布者管理页](https://marketplace.visualstudio.com/manage/publishers/katcuu)。不要把 GitHub 推送、本机安装或用户看到旧市场版本误认为发布失败。
 
@@ -145,7 +145,7 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 | --- | --- | --- |
 | `test/core.test.ts`，8 个测试 | 本地 / 远程路径与 ID、去重、schema 迁移、Host / Include、known_hosts、并发存储与损坏保护、隐藏恢复、SSH 配置追加 | 原生 UI、真实公网连接 |
 | `test/dashboard.test.ts`，2 个测试 | 执行实际 dashboard.js，检查列表、排序、来源搜索、打开 ID 消息、删除 / 取消收藏区别 | DOM 替身不能验证真实排版、点击焦点或 VS Code 窗口 |
-| `test/sftp.test.ts`，1 个测试 | 临时密钥和本地 SSH/SFTP 服务，验证公钥优先、密码回退、拒绝信任、目录 / 符号链接、错误与取消 | 用户实际 agent、跳板机、多因素认证、真实服务器环境 |
+| `test/sftp.test.ts`，4 个测试 | 临时密钥和本地 SSH/SFTP 服务，验证公钥优先、密码回退、agent 不可用 / 空身份时继续回退、未知主机信任、变化主机密钥拒绝、加密 / 缺失密钥、目录 / 符号链接、错误与取消、诊断脱敏 | 用户实际 agent、跳板机、多因素认证、真实服务器环境 |
 | `scripts/vscode-smoke.cjs` | 真实宿主激活、命令、活动栏直接打开、单实例管理页、四种入口、特殊字符 URI | 不进行真实 Remote SSH 连接 |
 
 协议测试使用临时服务和临时密钥，不修改个人 SSH 配置。测试环境必须允许监听回环端口；若运行器禁止监听，记录环境限制，不能把协议测试改成跳过后声称全部通过。
@@ -188,7 +188,22 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 | 本地项目打开到错误位置或特殊字符截断 | Uri.file、forceLocalWindow；远程是否改成了字符串拼 URI；Windows 是否误用 POSIX 本地路径 |
 | 新增 Host 后参数不符合预期 | 现有 Host * / Match / Include 的先匹配规则，用 ssh -G 核对；不能直接改用户配置顺序 |
 
-错误当前通过管理页提示或 VS Code 消息显示，没有专用日志服务。需要宿主日志时查看 VS Code 的扩展宿主日志和 Developer Tools，并先脱敏服务器、用户目录和凭据。
+页面显示面向用户的错误摘要。连接分阶段诊断见命令面板 **SSH Manager: 显示连接诊断** 打开的 **SSH Manager** 输出；扩展宿主日志和 Developer Tools 仅用于进一步排查，并先脱敏服务器、用户目录和凭据。
+
+### Windows 首次 SFTP 连接（2026-11-02）
+
+- 复现环境：Windows 25H2 / build 26200.9711（注册表 ProductName 为 Windows 10 Home China）；VS Code 1.143.1；Remote - SSH 0.128.0；已安装扩展路径 `%USERPROFILE%\.vscode\extensions\katcuu.ssh-workspace-manager-0.2.0`。
+- Remote - SSH 与插件 `ssh -G` 默认解析均使用 `%WINDIR%\System32\OpenSSH\ssh.exe`（OpenSSH_for_Windows_9.5p2）；两者默认 `remote.SSH.path`、`remote.SSH.configFile` 均未设置。Remote - SSH 日志确认了该 SSH 路径；本机 `ssh-agent` 服务为 stopped / disabled，用户 SSH 配置及 `known_hosts` 哈希在本轮前后保留。
+- 根因：`ssh2` 在连接 Windows named-pipe agent 失败时发出 `error.level === 'agent'`，随后会继续调用认证回调。旧版通用 `error` 监听器却立即销毁 SSH 连接并报告网络超时，因此尚未尝试配置密钥或提示密码。agent 可连但无身份时也需要继续尝试密钥 / 密码。
+- 修复：agent 传输 / 签名错误作为可恢复认证事件记录，不结束 SSH 会话；继续依序尝试 IdentityFile 和密码。连接配置、OpenSSH 版本、TCP、握手、known_hosts、agent、密钥、密码、SFTP 初始化及目录操作写入 `SSH Manager` 输出；记录字段保留原始错误 code / level / message，用户名、主机、别名、用户目录和认证口令脱敏，口令缓冲仅保留到认证完成。
+- 错误映射现在能区分 DNS 失败、端口拒绝、连接 / 握手超时、认证失败和 SFTP 初始化错误。新增命令 **SSH Manager: 显示连接诊断** 打开输出面板。未知主机仍要求本次确认，known_hosts 中已变化的密钥仍拒绝。
+- 本机 Windows 闭环复现使用临时配置、临时密钥、空 / 不可达 agent 和本地 ssh2 SFTP 服务。默认 Windows pipe agent 不可达时，密钥和密码均成功；agent 返回空身份时也回退成功。Windows `ssh -G` 保留含中文和空格的配置 / 私钥路径。known_hosts 在这个隔离 fixture 中关闭以触发未知主机回调；主机变化拒绝、取消密码、缺失密钥、加密密钥、TCP 拒绝及错误诊断另由自动测试覆盖。
+- 本机当时已经开着一个 Remote - SSH 窗口；本轮保留该现场，没有先打开新远程连接或更改服务、配置和 known_hosts。故没有把当前真实主机误记为“此前从未 Remote - SSH 连接”。使用独立 Node 进程连接当前真实服务器，known_hosts 命中，agent 报错后私钥认证成功，SFTP 列出 34 个家目录子文件夹，全程未触发密码 / 口令 / 信任回调；此结果不依赖当前窗口的 `vscode.workspace.fs`。
+- 已安装版 VS Code 启动新宿主时被 `vscode-updating` 安装互斥锁阻止，日志报告正在更新并在约 30 秒后退出。未更改其安装或关闭用户窗口；改用同版本官方 Windows ZIP、独立 user-data 和 extensions 目录运行真实宿主 smoke，结果 JSON 确认激活、活动栏直接打开、侧栏命令 / 视图及单实例管理页通过。另一个隔离本地宿主确认实际加载路径为仓库根目录、扩展版本为 0.2.0。
+- Dashboard 点击验收受 Windows UI 自动化工具窗口绑定失败阻止，报错为 `window id … no longer belongs to Microsoft.VisualStudioCode; current owner is Microsoft.VisualStudioCode`。尚未覆盖：新建 / 已有别名的真实管理页首次浏览、原生信任 / 密码弹窗、双击目录、当前 / 新窗口打开，以及同一服务器远程窗口的 `workspace.fs` 浏览。协议测试回调通过不等于这些原生交互已通过。
+- 网络重试后 `git fetch origin main --tags` 成功；核对远端 `main` 与本地 HEAD 均为用户给出的 `4da33cd`。本轮不创建标签、不发布。
+
+连接错误可从命令面板运行 **SSH Manager: 显示连接诊断** 查看。日志采用结构化阶段事件，不开启 `ssh2` 的协议 debug（其可能包含认证数据）。
 
 ## 8. 打包、安装与市场发布
 
@@ -198,7 +213,7 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 
 Marketplace 自动发布需要发布者 katcuu 在 Trusted Publishing 中登记仓库 katcuu/vscode_ssh_workspace_manager 和 workflow 文件 ci.yml。此策略尚未配置前，市场发布 job 会失败，但 GitHub Release 仍会完成。不要创建 PAT 或把凭据写入仓库。Marketplace 上传后仍需等待平台验证。
 
-发布时先更新 package.json、package-lock.json 和 CHANGELOG，推送 main 并确认 CI 成功，再推送匹配的版本 tag。不要只因文档变更就发布新版。VSIX 和私人截图不提交到仓库。用户已创建发布者并完成过 0.1.0 上传；0.2.0 是否已发布仍需重新核对。需要账号登录或协议确认时由用户在浏览器处理。
+发布时先更新 package.json、package-lock.json 和 CHANGELOG，推送 main 并确认 CI 成功，再推送匹配的版本 tag。不要只因文档变更就发布新版。VSIX 和私人截图不提交到仓库。用户已确认 0.2.0 已发布；本轮 Windows 修复尚未发布。需要账号登录或协议确认时由用户在浏览器处理。
 
 ## 9. 后续任务如何交接
 

@@ -4,6 +4,7 @@ import { homedir, userInfo } from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { validAlias } from './model';
+import { SshDiagnostics } from './sshDiagnostics';
 
 const execFileAsync = promisify(execFile);
 
@@ -139,12 +140,15 @@ export function parseResolvedConfig(alias: string, output: string): ResolvedSshC
     publicKeyAuthentication: enabled('pubkeyauthentication') && (!preferred.length || preferred.includes('publickey')),
     passwordAuthentication: enabled('passwordauthentication') && (!preferred.length || preferred.includes('password')),
     hostKeyAlias: get('hostkeyalias') || undefined,
-    knownHostsFiles: knownHostsFiles.length ? knownHostsFiles : [path.join(homedir(), '.ssh', 'known_hosts')]
+    knownHostsFiles: values.has('userknownhostsfile') || values.has('globalknownhostsfile') ? knownHostsFiles
+      : [path.join(homedir(), '.ssh', 'known_hosts')]
   };
 }
 
-export async function resolveSshConfig(sshPath: string, configFile: string, alias: string, signal?: AbortSignal): Promise<ResolvedSshConfig> {
+export async function resolveSshConfig(sshPath: string, configFile: string, alias: string, signal?: AbortSignal, diagnostics = new SshDiagnostics()): Promise<ResolvedSshConfig> {
   if (!validAlias(alias)) throw new Error('不支持此 SSH 别名。');
+  diagnostics.hide(alias, '<server>');
+  diagnostics.event('config', 'resolving', { sshPath, configFile });
   try {
     // Match exec can execute local commands; refuse it in background browsing before invoking OpenSSH.
     const check = async (file: string, visited = new Set<string>()): Promise<void> => {
@@ -169,11 +173,20 @@ export async function resolveSshConfig(sshPath: string, configFile: string, alia
       }
     };
     await check(configFile);
+    if (process.platform === 'win32' && !path.isAbsolute(sshPath)) {
+      const located = await execFileAsync('where.exe', [sshPath], { windowsHide: true, timeout: 10000, signal }).catch(() => undefined);
+      diagnostics.event('config', 'executable', { path: located?.stdout.trim().split(/\r?\n/)[0] || sshPath });
+    }
+    const version = await execFileAsync(sshPath, ['-V'], { windowsHide: true, timeout: 10000, signal });
+    diagnostics.event('config', 'openssh-version', { version: (version.stderr || version.stdout).trim() });
     const { stdout } = await execFileAsync(sshPath, ['-G', '-F', configFile, alias], {
       timeout: 10000, maxBuffer: 1024 * 1024, windowsHide: true, signal
     });
-    return parseResolvedConfig(alias, stdout);
+    const config = parseResolvedConfig(alias, stdout);
+    diagnostics.configure(config);
+    return config;
   } catch (error) {
+    diagnostics.event('config', 'failed', {}, error);
     const code = (error as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') throw new Error('未找到本机 OpenSSH。请安装或设置 sshWorkspaceManager.sshPath。');
     if (typeof code === 'number') throw new Error('OpenSSH 无法解析该配置，请检查 SSH 配置文件和别名。');

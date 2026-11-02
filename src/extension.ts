@@ -10,6 +10,7 @@ import { addSshHost } from './sshConfigWriter';
 import { ServerItem, ServerTree, SidebarView } from './serverTree';
 import { CatalogStore } from './store';
 import { connectSftp, SftpSession } from './sftp';
+import { SshDiagnostics } from './sshDiagnostics';
 
 let manager: WorkspaceManager | undefined;
 
@@ -18,6 +19,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(manager,
     vscode.commands.registerCommand('sshWorkspaceManager.openDashboard', () => manager?.show()),
     vscode.commands.registerCommand('sshWorkspaceManager.saveCurrentFolders', () => manager?.recordCurrentFolders(true)),
+    vscode.commands.registerCommand('sshWorkspaceManager.showConnectionLog', () => manager?.showConnectionLog()),
     ...(['addServer', 'removeServer', 'refreshServers', 'editConfig', 'selectServer'] as const).map(command =>
       vscode.commands.registerCommand(`sshWorkspaceManager.${command}`, (item?: ServerItem) => manager?.runCommand(command, item))));
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
@@ -52,8 +54,11 @@ class WorkspaceManager implements vscode.Disposable {
   private lastBrowsePath?: string;
   private subscriptions: vscode.Disposable[] = [];
   private disposed = false;
+  private readonly output = vscode.window.createOutputChannel('SSH Manager');
+  private connectionSequence = 0;
 
   constructor(private context: vscode.ExtensionContext) {
+    this.subscriptions.push(this.output);
     this.store = new CatalogStore(context.globalStorageUri.fsPath);
     this.view = vscode.window.createTreeView('sshWorkspaceManager.launcher', { treeDataProvider: this.tree, showCollapseAll: false });
     this.subscriptions.push(this.view, this.tree, this.view.onDidChangeVisibility(event => {
@@ -159,6 +164,8 @@ class WorkspaceManager implements vscode.Disposable {
   }
 
   private post(message: unknown): void { void this.panel?.webview.postMessage(message); }
+
+  showConnectionLog(): void { this.output.show(true); }
 
   private report(error: unknown): void {
     const message = error instanceof Error ? error.message : '操作失败，请重试。';
@@ -427,13 +434,18 @@ class WorkspaceManager implements vscode.Disposable {
     this.disconnect(); this.selectedAlias = alias;
     const generation = this.generation;
     const controller = this.connection = new AbortController();
+    const connectionId = ++this.connectionSequence;
+    const diagnostics = new SshDiagnostics(line => this.output.appendLine(`${new Date().toISOString()} [${connectionId}] ${line}`));
+    diagnostics.hide(alias, '<server>');
+    diagnostics.event('environment', 'connection', { platform: process.platform, node: process.version,
+      vscode: vscode.version, extensionVersion: this.context.extension.packageJSON.version, extensionPath: this.context.extensionPath });
     this.post({ type: 'status', message: '正在尝试密钥 / SSH agent…', busy: true, connected: false });
     try {
       const current = this.currentRemote();
       if (current?.alias !== alias) {
         const configuredPath = vscode.workspace.getConfiguration('sshWorkspaceManager').get('sshPath', 'ssh');
         const sshPath = configuredPath === 'ssh' ? vscode.workspace.getConfiguration('remote.SSH').get('path', '') || 'ssh' : configuredPath;
-        const config = await resolveSshConfig(sshPath, this.configPath(), alias, controller.signal);
+        const config = await resolveSshConfig(sshPath, this.configPath(), alias, controller.signal, diagnostics);
         if (generation !== this.generation) return;
         const session = await connectSftp(config, {
           password: async () => {
@@ -448,16 +460,17 @@ class WorkspaceManager implements vscode.Disposable {
             }, '核对后仅本次信任');
             return choice === '核对后仅本次信任' && !controller.signal.aborted;
           }
-        }, controller.signal);
+        }, controller.signal, diagnostics);
         if (generation !== this.generation) { session.close(); return; }
         this.session = session;
-      }
+      } else diagnostics.event('directory', 'using-current-remote-ssh');
       let initialPath = this.lastBrowsePath;
       if (!initialPath) initialPath = current?.alias === alias ? current.path : await this.session!.homeDirectory();
       if (generation !== this.generation) return;
       await this.list(alias, initialPath);
     } catch (error) {
       if (generation !== this.generation) return;
+      diagnostics.event('directory', 'connection-failed', {}, error);
       this.disconnect(); this.report(error);
       this.post({ type: 'status', message: '后台连接未就绪，可重试或直接打开已保存的文件夹。', busy: false, connected: false });
     }
