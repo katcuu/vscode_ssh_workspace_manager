@@ -5,6 +5,7 @@ import { normalizeRemotePath, RemoteEntry } from './model';
 import { ResolvedSshConfig } from './sshConfig';
 import { fingerprint, keyAlgorithm, readHostTrust } from './trust';
 import { SshDiagnostics, SshStage } from './sshDiagnostics';
+import { GitClonePrompts, GitCloneProgress, gitCloneCommand, gitCloneDestination, parseGitProgress, parseGitPrompt, parseGitRepositoryUrl, stripTerminalSequences } from './gitClone';
 
 export interface ConnectionPrompts {
   password(alias: string): Promise<string | undefined>;
@@ -31,6 +32,7 @@ function timeout<T>(operation: Promise<T>, ms: number, onTimeout: () => void): P
 export class SftpSession {
   private closed = false;
   private idleTimer?: NodeJS.Timeout;
+  private activeCommands = 0;
 
   constructor(private client: Client, private sftp: SFTPWrapper, private diagnostics = new SshDiagnostics()) {
     client.on('close', () => { this.closed = true; clearTimeout(this.idleTimer); });
@@ -39,6 +41,7 @@ export class SftpSession {
 
   private touch(): void {
     clearTimeout(this.idleTimer);
+    if (this.activeCommands) return;
     this.idleTimer = setTimeout(() => this.close(), 5 * 60 * 1000);
     this.idleTimer.unref();
   }
@@ -86,6 +89,156 @@ export class SftpSession {
     }));
     this.diagnostics.event('directory', 'listed', { directories: result.length });
     return result.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async cloneRepository(parentPath: string, repositoryUrl: string, prompts: GitClonePrompts, signal: AbortSignal,
+    onProgress: (progress: GitCloneProgress) => void): Promise<string> {
+    if (this.closed) throw new Error('后台 SSH 连接已关闭，请重新连接后再克隆。');
+    if (signal.aborted) throw aborted();
+    const repository = parseGitRepositoryUrl(repositoryUrl);
+    const destination = gitCloneDestination(parentPath, repository);
+    const releaseCommand = () => {
+      this.activeCommands = Math.max(0, this.activeCommands - 1);
+      this.touch();
+    };
+    this.activeCommands += 1;
+    clearTimeout(this.idleTimer);
+
+    return new Promise<string>((resolve, reject) => {
+      let channel: import('ssh2').ClientChannel | undefined;
+      let settled = false;
+      let cancelTimer: NodeJS.Timeout | undefined;
+      let cancelError: Error | undefined;
+      let promptActive = false;
+      let username = '';
+      let exitCode: number | undefined;
+      let promptBuffer = '';
+      let progressBuffer = '';
+      let output = '';
+
+      const cleanup = () => {
+        signal.removeEventListener('abort', onAbort);
+        clearTimeout(cancelTimer);
+        releaseCommand();
+      };
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error); else resolve(destination);
+      };
+      const emitProgress = (progress: GitCloneProgress) => {
+        try { onProgress(progress); } catch { /* Progress rendering must not interrupt the remote operation. */ }
+      };
+      const interrupt = (error: Error) => {
+        if (settled || cancelError) return;
+        cancelError = error;
+        if (!channel) { finish(error); return; }
+        try { channel.write('\x03'); channel.signal('INT'); } catch { /* The channel may already be closing. */ }
+        cancelTimer = setTimeout(() => { channel?.destroy(); finish(error); }, 1500);
+        cancelTimer.unref();
+      };
+      const onAbort = () => interrupt(aborted());
+      signal.addEventListener('abort', onAbort, { once: true });
+
+      const handlePrompt = async (prompt: NonNullable<ReturnType<typeof parseGitPrompt>>) => {
+        if (prompt.type === 'unknown-host') {
+          try { channel?.write('no\n'); } catch { /* The remote prompt may already be closed. */ }
+          interrupt(new Error(`Git 服务器 ${repository.host} 的主机密钥尚未被服务器信任。请先在 Linux 服务器上核对指纹并建立信任后重试。`));
+          return;
+        }
+        promptActive = true;
+        try {
+          let value: string | undefined;
+          if (prompt.type === 'username') {
+            value = await prompts.username(prompt.target);
+            if (value !== undefined) username = value;
+          } else if (prompt.type === 'password') {
+            const targetUser = /https?:\/\/([^@/]+)@/i.exec(prompt.target)?.[1] || username;
+            value = await prompts.password(prompt.target, targetUser);
+          } else if (prompt.type === 'ssh-password') {
+            value = await prompts.sshPassword(prompt.target, prompt.username);
+          } else value = await prompts.passphrase(prompt.keyPath);
+          if (signal.aborted || cancelError) return;
+          if (value === undefined) { interrupt(new Error('Git 凭据输入已取消。')); return; }
+          channel?.write(`${value}\n`);
+          value = undefined;
+          promptBuffer = '';
+        } catch {
+          interrupt(new Error('Git 凭据输入失败或已取消。'));
+        } finally { promptActive = false; }
+      };
+
+      const consume = (chunk: Buffer | string) => {
+        const text = stripTerminalSequences(chunk.toString()).replace(/\u0000/g, '');
+        output = (output + text).slice(-12000);
+        progressBuffer += text;
+        const lines = progressBuffer.split(/[\r\n]+/);
+        progressBuffer = lines.pop() || '';
+        for (const line of lines) {
+          const progress = parseGitProgress(line);
+          if (progress) emitProgress(progress);
+        }
+        if (!promptActive && !cancelError) {
+          promptBuffer = (promptBuffer + text).slice(-8192);
+          const prompt = parseGitPrompt(promptBuffer, repository.protocol);
+          if (prompt) {
+            promptBuffer = '';
+            void handlePrompt(prompt);
+          }
+        }
+      };
+
+      emitProgress({ phase: 'starting', message: '正在服务器上启动 Git…' });
+      try {
+        this.client.exec(gitCloneCommand(repository.url, destination), {
+          pty: { term: 'xterm', cols: 120, rows: 40, modes: { ECHO: 0 } }
+        }, (error, stream) => {
+          if (error || !stream) {
+            if (!settled) finish(new Error('无法在服务器上启动 Git 命令；请确认服务器允许 SSH 命令执行。'));
+            return;
+          }
+          channel = stream;
+          if (settled || signal.aborted || cancelError) {
+            try { stream.write('\x03'); stream.signal('INT'); stream.destroy(); } catch { /* The channel may already be closing. */ }
+            if (!settled) onAbort();
+            return;
+          }
+          emitProgress({ phase: 'starting', message: '正在连接 Git 仓库；可输入凭据或取消。' });
+          stream.on('data', consume);
+          stream.stderr.on('data', consume);
+          stream.on('exit', (code) => { exitCode = typeof code === 'number' ? code : undefined; });
+          stream.on('error', () => finish(cancelError || new Error('Git 命令通道中断。')));
+          stream.on('close', () => {
+            if (cancelError) { finish(cancelError); return; }
+            if (exitCode === 0) {
+              emitProgress({ phase: 'complete', message: 'Git 仓库已拉取完成。', percent: 100 });
+              finish();
+            } else finish(this.cloneFailure(output, repository.protocol, repository.host));
+          });
+        });
+      } catch {
+        finish(new Error('无法在服务器上启动 Git 命令；请确认服务器允许 SSH 命令执行。'));
+      }
+    });
+  }
+
+  private cloneFailure(output: string, protocol: 'ssh' | 'https', host: string): Error {
+    const text = stripTerminalSequences(output).toLowerCase();
+    if (/command not found|git: not found|git: command not found/.test(text)) return new Error('Linux 服务器未安装 Git。');
+    if (/destination path .* already exists|already exists and is not an empty directory/.test(text)) {
+      return new Error('目标仓库目录已存在。请选择其他父目录，或先在服务器上处理已有目录。');
+    }
+    if (/permission denied \((?:publickey|password)(?:,[^)]+)*\)|could not read from remote repository/.test(text)) {
+      return new Error(`无法通过 SSH 访问 Git 仓库 ${host}。请检查 Linux 服务器上的 key/agent 或 SSH 账号密码；也可改用 HTTPS 地址并输入令牌。`);
+    }
+    if (/authentication failed|invalid username or password|terminal prompts disabled/.test(text)) {
+      return new Error(protocol === 'https' ? 'Git HTTPS 认证失败，请检查用户名和访问令牌后重试。' : 'Git SSH 认证失败，请检查 Linux 服务器上的 key/agent。');
+    }
+    if (/host key verification failed|authenticity of host/.test(text)) {
+      return new Error(`Git 服务器 ${host} 的主机密钥校验失败。请在 Linux 服务器上核验并配置 known_hosts 后重试。`);
+    }
+    return new Error('Git 克隆失败。请检查仓库地址、访问权限、服务器网络和目标目录权限。');
   }
 
   close(): void {

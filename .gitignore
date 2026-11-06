@@ -10,3 +10,12 @@ artifacts/
 *.pem
 *.key
 .vsce
+
+# Local AI tool installations and machine-specific hooks
+.agents/
+.claude/
+.codex/
+.dsh/
+.github/agents/
+.github/hooks/
+.github/skills/

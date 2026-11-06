@@ -4,13 +4,15 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { watch, FSWatcher } from 'node:fs';
 import { homedir } from 'node:os';
 import * as path from 'node:path';
-import { aliasForAuthority, authorityForAlias, FolderTarget, hideServer, makeFolder, makeLocalFolder, normalizeRemotePath, recordFolder, RemoteEntry, restoreServer, ServerInfo, validAlias, validateCatalog, visibleServers } from './model';
+import { aliasForAuthority, authorityForAlias, FolderTarget, hideServer, makeFolder, makeLocalFolder, normalizeLocalPath, normalizeRemotePath, recordFolder, RemoteEntry, restoreServer, ServerInfo, validAlias, validateCatalog, visibleServers } from './model';
 import { expandHome, readHostAliases, resolveSshConfig } from './sshConfig';
 import { addSshHost } from './sshConfigWriter';
 import { ServerItem, ServerTree, SidebarView } from './serverTree';
 import { CatalogStore } from './store';
 import { connectSftp, SftpSession } from './sftp';
 import { SshDiagnostics } from './sshDiagnostics';
+import { gitCloneDestination, parseGitRepositoryUrl } from './gitClone';
+import { cloneLocalRepository } from './localGitClone';
 
 let manager: WorkspaceManager | undefined;
 
@@ -48,7 +50,14 @@ class WorkspaceManager implements vscode.Disposable {
   private readonly view: vscode.TreeView<ServerItem>;
   private initialized = false;
   private session?: SftpSession;
+  private sessionAlias?: string;
   private connection?: AbortController;
+  private cloneController?: AbortController;
+  private cloneSequence = 0;
+  private cloneScope?: 'remote' | 'local';
+  private cloneProgress?: { message: string; phase?: string; percent?: number; current?: number; total?: number; canceling?: boolean };
+  private cloneResult?: { scope: 'remote' | 'local'; state: 'success' | 'failed' | 'cancelled'; message: string; path?: string; alias?: string };
+  private localCloneParent = homedir();
   private generation = 0;
   private requestSequence = 0;
   private lastBrowsePath?: string;
@@ -137,6 +146,10 @@ class WorkspaceManager implements vscode.Disposable {
       folders: data.folders,
       browsePaths: data.browsePaths, selectedAlias: this.selectedAlias, selectedView: this.selectedView,
       initialPath: this.lastBrowsePath || '',
+      localCloneParent: this.localCloneParent,
+      cloneResult: this.cloneResult || null,
+      cloneOperation: this.cloneController && this.cloneScope
+        ? { scope: this.cloneScope, ...this.cloneProgress } : null,
       recording: vscode.workspace.getConfiguration('sshWorkspaceManager').get('recordFolders', true) });
     const item = this.tree.find(this.selectedView, this.selectedView === 'server' ? this.selectedAlias : undefined);
     if (this.view.visible && item) await this.view.reveal(item, { select: true, focus: false });
@@ -239,7 +252,15 @@ class WorkspaceManager implements vscode.Disposable {
   private async selectView(view: SidebarView, value?: string): Promise<void> {
     const alias = view === 'server' ? this.requireAlias(value) : undefined;
     if (view !== this.selectedView || alias !== this.selectedAlias) {
-      this.disconnect(); this.selectedView = view; this.selectedAlias = alias; this.selectionInitialized = true;
+      const remoteCloneInProgress = this.cloneController && this.cloneScope === 'remote';
+      const keepingCloneSession = this.cloneResult?.scope === 'remote' && this.cloneResult.state === 'success'
+        && this.sessionAlias === this.cloneResult.alias && this.session?.available
+        && (alias === this.cloneResult.alias || (view !== 'server' && this.selectedAlias === this.cloneResult.alias));
+      if (remoteCloneInProgress || keepingCloneSession) {
+        this.requestSequence += 1;
+        this.connection?.abort(); this.connection = undefined;
+      } else this.disconnectBrowser();
+      this.selectedView = view; this.selectedAlias = alias; this.selectionInitialized = true;
       const generation = this.generation;
       const data = await this.store.read();
       if (generation !== this.generation) return;
@@ -249,6 +270,10 @@ class WorkspaceManager implements vscode.Disposable {
     }
     await this.show(true);
     await this.snapshot();
+    if (alias && this.cloneResult?.scope === 'remote' && this.cloneResult.state === 'success'
+      && this.cloneResult.alias === alias && this.sessionAlias === alias && this.session?.available) {
+      await this.list(alias, this.cloneResult.path || this.lastBrowsePath || '/');
+    }
   }
 
   private async addServer(): Promise<void> {
@@ -310,7 +335,48 @@ class WorkspaceManager implements vscode.Disposable {
         if (alias !== this.selectedAlias) throw new Error('服务器已切换，请重新连接。');
         await this.connectAndBrowse(alias); return;
       }
-      case 'cancel': this.disconnect(); this.post({ type: 'status', message: '后台浏览连接已断开。', busy: false, connected: false }); return;
+      case 'cancel':
+        this.cloneController?.abort();
+        this.disconnectBrowser();
+        this.post({ type: 'status', message: '后台浏览连接已断开。', busy: false, connected: false });
+        return;
+      case 'clone': {
+        const alias = this.requireAlias(message.alias);
+        if (alias !== this.selectedAlias || typeof message.path !== 'string' || typeof message.url !== 'string') {
+          throw new Error('请先选择服务器目录并输入 Git 仓库地址。');
+        }
+        await this.cloneRepository(alias, normalizeRemotePath(message.path), message.url); return;
+      }
+      case 'selectLocalCloneParent': {
+        if (this.selectedView !== 'local') throw new Error('请先打开“本地文件”视图。');
+        const selected = await vscode.window.showOpenDialog({ defaultUri: vscode.Uri.file(this.localCloneParent),
+          canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: '选择克隆父文件夹' });
+        if (!selected?.length) return;
+        if (selected[0].scheme !== 'file') throw new Error('请选择本机文件夹。');
+        this.localCloneParent = normalizeLocalPath(selected[0].fsPath);
+        this.post({ type: 'localCloneParent', path: this.localCloneParent });
+        return;
+      }
+      case 'cloneLocal': {
+        if (this.selectedView !== 'local' || typeof message.parentPath !== 'string' || typeof message.url !== 'string') {
+          throw new Error('请先选择本机父文件夹并输入 Git 仓库地址。');
+        }
+        const parent = normalizeLocalPath(message.parentPath);
+        if (parent !== this.localCloneParent) throw new Error('本机克隆目录已变化，请重新选择后重试。');
+        await this.cloneToLocal(parent, message.url); return;
+      }
+      case 'cancelClone': {
+        this.cloneController?.abort();
+        if (this.cloneScope) {
+          this.cloneProgress = { ...this.cloneProgress, message: '正在取消克隆…', canceling: true };
+          this.post({ type: 'cloneProgress', scope: this.cloneScope, ...this.cloneProgress });
+        }
+        return;
+      }
+      case 'dismissCloneResult':
+        this.cloneResult = undefined;
+        this.post({ type: 'cloneResult', result: null });
+        return;
       case 'browse': {
         const alias = this.requireAlias(message.alias);
         if (alias !== this.selectedAlias) return;
@@ -396,6 +462,28 @@ class WorkspaceManager implements vscode.Disposable {
         });
         return;
       }
+      case 'openCloneResult': {
+        if (message.mode !== 'current' && message.mode !== 'new') throw new Error('打开方式无效。');
+        const result = this.cloneResult;
+        if (!result || result.state !== 'success' || !result.path) throw new Error('没有可打开的克隆结果。');
+        let uri: vscode.Uri;
+        if (result.scope === 'local') {
+          uri = vscode.Uri.file(normalizeLocalPath(result.path));
+          const stat = await vscode.workspace.fs.stat(uri);
+          if (!(stat.type & vscode.FileType.Directory)) throw new Error('本机克隆路径不是文件夹。');
+        } else {
+          const alias = this.requireAlias(result.alias);
+          uri = vscode.Uri.from({ scheme: 'vscode-remote', authority: authorityForAlias(alias), path: normalizeRemotePath(result.path) });
+          if (!vscode.extensions.getExtension('ms-vscode-remote.remote-ssh')) {
+            throw new Error('请先安装 Microsoft Remote - SSH 扩展，再打开远程文件夹。');
+          }
+        }
+        await vscode.commands.executeCommand('vscode.openFolder', uri, {
+          ...(message.mode === 'new' ? { forceNewWindow: true } : { forceReuseWindow: true }),
+          ...(uri.scheme === 'file' ? { forceLocalWindow: true } : {})
+        });
+        return;
+      }
       case 'addFolder': {
         const alias = this.requireAlias(message.alias);
         const value = await vscode.window.showInputBox({ title: `${alias}：添加项目文件夹`, prompt: 'Linux 绝对路径；无需先连接服务器',
@@ -430,47 +518,188 @@ class WorkspaceManager implements vscode.Disposable {
     finally { signal.removeEventListener('abort', cancel); token.dispose(); }
   }
 
-  private async connectAndBrowse(alias: string): Promise<void> {
-    this.disconnect(); this.selectedAlias = alias;
-    const generation = this.generation;
-    const controller = this.connection = new AbortController();
+  private async openSftpSession(alias: string, signal: AbortSignal, generation: number): Promise<SftpSession> {
     const connectionId = ++this.connectionSequence;
     const diagnostics = new SshDiagnostics(line => this.output.appendLine(`${new Date().toISOString()} [${connectionId}] ${line}`));
     diagnostics.hide(alias, '<server>');
     diagnostics.event('environment', 'connection', { platform: process.platform, node: process.version,
       vscode: vscode.version, extensionVersion: this.context.extension.packageJSON.version, extensionPath: this.context.extensionPath });
+    const configuredPath = vscode.workspace.getConfiguration('sshWorkspaceManager').get('sshPath', 'ssh');
+    const sshPath = configuredPath === 'ssh' ? vscode.workspace.getConfiguration('remote.SSH').get('path', '') || 'ssh' : configuredPath;
+    const config = await resolveSshConfig(sshPath, this.configPath(), alias, signal, diagnostics);
+    if (generation !== this.generation || signal.aborted) throw new Error('连接已取消。');
+    return connectSftp(config, {
+      password: async () => {
+        if (generation !== this.generation) return undefined;
+        this.post({ type: 'status', message: '密钥 / agent 未通过，等待输入服务器密码…', busy: true, connected: false });
+        return this.inputSecret(`${alias}：SSH 密码`, '仅用于本次后台连接；不会保存。', signal);
+      },
+      passphrase: file => this.inputSecret(`${alias}：私钥口令`, `解锁本机私钥 ${file}；口令不会保存。`, signal),
+      trustHost: async (_host, algorithm, hostFingerprint) => {
+        const choice = await vscode.window.showWarningMessage(`首次后台连接 ${alias}`, {
+          modal: true, detail: `本机 known_hosts 中没有该主机密钥。请核对服务器指纹：\n${algorithm}\n${hostFingerprint}\n\n仅信任本次连接，不改写 known_hosts。`
+        }, '核对后仅本次信任');
+        return choice === '核对后仅本次信任' && !signal.aborted;
+      }
+    }, signal, diagnostics);
+  }
+
+  private async cloneRepository(alias: string, parentPath: string, repositoryUrl: string): Promise<void> {
+    if (this.cloneController) throw new Error('已有 Git 克隆任务正在进行。');
+    const controller = this.cloneController = new AbortController();
+    const sequence = ++this.cloneSequence;
+    const generation = this.generation;
+    let destination: string | undefined;
+    this.cloneScope = 'remote';
+    this.cloneResult = undefined;
+    this.cloneProgress = { phase: 'starting', message: '正在准备远程 Git 克隆…' };
+    this.post({ type: 'cloneResult', result: null });
+    const reportProgress = (progress: { message: string; phase?: string; percent?: number; current?: number; total?: number }) => {
+      if (this.cloneController === controller && sequence === this.cloneSequence) {
+        this.cloneProgress = progress;
+        this.post({ type: 'cloneProgress', scope: 'remote', ...progress });
+      }
+    };
+    try {
+      if (alias !== this.selectedAlias) throw new Error('服务器已切换，请重新选择目录。');
+      const repository = parseGitRepositoryUrl(repositoryUrl);
+      destination = gitCloneDestination(parentPath, repository);
+      reportProgress({ phase: 'starting', message: `准备克隆到 ${destination}…` });
+      let session = this.sessionAlias === alias ? this.session : undefined;
+      if (!session?.available) {
+        reportProgress({ phase: 'starting', message: '正在建立服务器命令通道…' });
+        session = await this.openSftpSession(alias, controller.signal, generation);
+        if (controller.signal.aborted || sequence !== this.cloneSequence) { session.close(); return; }
+        this.session = session;
+        this.sessionAlias = alias;
+      }
+      await session.cloneRepository(parentPath, repository.url, {
+        username: async target => {
+          const token = new vscode.CancellationTokenSource();
+          const cancel = () => token.cancel();
+          controller.signal.addEventListener('abort', cancel, { once: true });
+          if (controller.signal.aborted) token.cancel();
+          try {
+            return await vscode.window.showInputBox({ title: 'Git HTTPS 用户名', prompt: `连接 ${target} 的 Git 用户名。`,
+              ignoreFocusOut: true, validateInput: value => value.trim() ? undefined : '请输入 Git 用户名。' }, token.token);
+          } finally { controller.signal.removeEventListener('abort', cancel); token.dispose(); }
+        },
+        password: (target, username) => this.inputSecret('Git 密码或访问令牌',
+          `${target}${username ? ` · ${username}` : ''}。凭据会经加密 SSH 通道发送给 ${alias}，仅用于本次克隆，不会保存；GitHub 请使用访问令牌。`, controller.signal),
+        sshPassword: (target, username) => this.inputSecret('Git SSH 账号密码',
+          `${username}@${target}。仅在 Git 服务器要求 SSH 密码时输入；凭据经加密 SSH 通道临时发送，不会保存。`, controller.signal),
+        passphrase: keyPath => this.inputSecret('Git SSH 私钥口令', `解锁 Linux 服务器上的私钥 ${keyPath}；口令不会保存。`, controller.signal)
+      }, controller.signal, reportProgress);
+      if (controller.signal.aborted || sequence !== this.cloneSequence) return;
+      const clonedPath = normalizeRemotePath(destination);
+      let savedBrowsePath = true;
+      try {
+        await this.store.update(data => { data.browsePaths[alias] = clonedPath; });
+        this.watchStore();
+      } catch { savedBrowsePath = false; }
+      if (this.selectedAlias === alias) this.lastBrowsePath = clonedPath;
+      const message = savedBrowsePath ? `已克隆到 ${clonedPath}。` : `已克隆到 ${clonedPath}，但无法保存浏览位置。`;
+      this.cloneResult = { scope: 'remote', state: 'success', message, path: clonedPath, alias };
+      this.post({ type: 'cloneComplete', scope: 'remote', message: this.cloneResult.message, result: this.cloneResult });
+      if (this.selectedView === 'server' && this.selectedAlias === alias && !controller.signal.aborted && sequence === this.cloneSequence) {
+        await this.list(alias, clonedPath);
+      }
+    } catch (error) {
+      if (sequence !== this.cloneSequence || this.disposed) return;
+      const message = error instanceof Error ? error.message : 'Git 克隆失败，请检查仓库地址和服务器连接。';
+      this.cloneResult = { scope: 'remote', state: /取消|cancel/i.test(message) ? 'cancelled' : 'failed', message, path: destination, alias };
+      this.post({ type: 'cloneFailed', scope: 'remote', message, result: this.cloneResult });
+    } finally {
+      if (this.cloneController === controller) {
+        this.cloneController = undefined; this.cloneScope = undefined; this.cloneProgress = undefined;
+        this.post({ type: 'cloneOperation', operation: null });
+      }
+    }
+  }
+
+  private async cloneToLocal(parentPath: string, repositoryUrl: string): Promise<void> {
+    if (this.cloneController) throw new Error('已有 Git 克隆任务正在进行。');
+    const controller = this.cloneController = new AbortController();
+    const sequence = ++this.cloneSequence;
+    let destination: string | undefined;
+    this.cloneScope = 'local';
+    this.cloneResult = undefined;
+    this.cloneProgress = { phase: 'starting', message: '正在准备本机 Git 克隆…' };
+    this.post({ type: 'cloneResult', result: null });
+    const reportProgress = (progress: { message: string; phase?: string; percent?: number; current?: number; total?: number }) => {
+      if (this.cloneController === controller && sequence === this.cloneSequence) {
+        this.cloneProgress = progress;
+        this.post({ type: 'cloneProgress', scope: 'local', ...progress });
+      }
+    };
+    try {
+      if (this.selectedView !== 'local' || normalizeLocalPath(parentPath) !== this.localCloneParent) {
+        throw new Error('本机克隆目录已变化，请重新选择后重试。');
+      }
+      destination = await cloneLocalRepository(parentPath, repositoryUrl,
+        vscode.Uri.joinPath(this.context.extensionUri, 'media', 'git-askpass.cjs').fsPath, {
+          username: async target => {
+            const token = new vscode.CancellationTokenSource();
+            const cancel = () => token.cancel();
+            controller.signal.addEventListener('abort', cancel, { once: true });
+            if (controller.signal.aborted) token.cancel();
+            try {
+              return await vscode.window.showInputBox({ title: 'Git HTTPS 用户名', prompt: `连接 ${target} 的 Git 用户名。`,
+                ignoreFocusOut: true, validateInput: value => value.trim() ? undefined : '请输入 Git 用户名。' }, token.token);
+            } finally { controller.signal.removeEventListener('abort', cancel); token.dispose(); }
+          },
+          password: (target, username) => this.inputSecret('Git 密码或访问令牌',
+            `${target}${username ? ` · ${username}` : ''}。凭据通过本机 Git askpass 临时传递，仅用于本次克隆，不会保存；GitHub 请使用访问令牌。`, controller.signal),
+          sshPassword: (target, username) => this.inputSecret('Git SSH 账号密码',
+            `${username}@${target}。仅在 Git 服务器要求 SSH 密码时输入；凭据仅用于本次克隆，不会保存。`, controller.signal),
+          passphrase: keyPath => this.inputSecret('本机 Git SSH 私钥口令', `解锁本机私钥 ${keyPath}；口令不会保存。`, controller.signal)
+        }, controller.signal, reportProgress);
+      const folder = makeLocalFolder(destination);
+      let savedFolder = true;
+      try {
+        await this.store.update(data => {
+          if (!data.folders.some(value => value.id === folder.id)) data.folders.push(folder);
+        });
+      } catch { savedFolder = false; }
+      this.watchStore();
+      this.cloneResult = { scope: 'local', state: 'success',
+        message: savedFolder ? `已克隆到 ${destination}，已加入本地项目列表。` : `已克隆到 ${destination}，但未能加入本地项目列表。`, path: destination };
+      try { await this.snapshot(); } catch (error) { this.report(error); }
+      if (sequence !== this.cloneSequence || this.disposed) return;
+      this.post({ type: 'cloneComplete', scope: 'local', message: this.cloneResult.message, result: this.cloneResult });
+    } catch (error) {
+      if (sequence !== this.cloneSequence || this.disposed) return;
+      const message = error instanceof Error ? error.message : '本机 Git 克隆失败，请检查仓库地址和网络。';
+      this.cloneResult = { scope: 'local', state: /取消|cancel/i.test(message) ? 'cancelled' : 'failed', message, path: destination };
+      this.post({ type: 'cloneFailed', scope: 'local', message, result: this.cloneResult });
+    } finally {
+      controller.abort();
+      if (this.cloneController === controller) {
+        this.cloneController = undefined; this.cloneScope = undefined; this.cloneProgress = undefined;
+        this.post({ type: 'cloneOperation', operation: null });
+      }
+    }
+  }
+
+  private async connectAndBrowse(alias: string): Promise<void> {
+    this.disconnect(); this.selectedAlias = alias;
+    const generation = this.generation;
+    const controller = this.connection = new AbortController();
     this.post({ type: 'status', message: '正在尝试密钥 / SSH agent…', busy: true, connected: false });
     try {
       const current = this.currentRemote();
       if (current?.alias !== alias) {
-        const configuredPath = vscode.workspace.getConfiguration('sshWorkspaceManager').get('sshPath', 'ssh');
-        const sshPath = configuredPath === 'ssh' ? vscode.workspace.getConfiguration('remote.SSH').get('path', '') || 'ssh' : configuredPath;
-        const config = await resolveSshConfig(sshPath, this.configPath(), alias, controller.signal, diagnostics);
-        if (generation !== this.generation) return;
-        const session = await connectSftp(config, {
-          password: async () => {
-            if (generation !== this.generation) return undefined;
-            this.post({ type: 'status', message: '密钥 / agent 未通过，等待输入服务器密码…', busy: true, connected: false });
-            return this.inputSecret(`${alias}：SSH 密码`, '仅用于本次后台浏览；不会保存。正式打开时 Remote SSH 可能再次认证。', controller.signal);
-          },
-          passphrase: file => this.inputSecret(`${alias}：私钥口令`, `解锁 ${file}；口令不会保存。`, controller.signal),
-          trustHost: async (_host, algorithm, fingerprint) => {
-            const choice = await vscode.window.showWarningMessage(`首次后台连接 ${alias}`, {
-              modal: true, detail: `本机 known_hosts 中没有该主机密钥。请核对服务器指纹：\n${algorithm}\n${fingerprint}\n\n仅信任本次连接，不改写 known_hosts。`
-            }, '核对后仅本次信任');
-            return choice === '核对后仅本次信任' && !controller.signal.aborted;
-          }
-        }, controller.signal, diagnostics);
+        const session = await this.openSftpSession(alias, controller.signal, generation);
         if (generation !== this.generation) { session.close(); return; }
         this.session = session;
-      } else diagnostics.event('directory', 'using-current-remote-ssh');
+        this.sessionAlias = alias;
+      }
       let initialPath = this.lastBrowsePath;
       if (!initialPath) initialPath = current?.alias === alias ? current.path : await this.session!.homeDirectory();
       if (generation !== this.generation) return;
       await this.list(alias, initialPath);
     } catch (error) {
       if (generation !== this.generation) return;
-      diagnostics.event('directory', 'connection-failed', {}, error);
       this.disconnect(); this.report(error);
       this.post({ type: 'status', message: '后台连接未就绪，可重试或直接打开已保存的文件夹。', busy: false, connected: false });
     }
@@ -482,7 +711,9 @@ class WorkspaceManager implements vscode.Disposable {
       const uri = vscode.Uri.from({ scheme: 'vscode-remote', authority: current.authority, path: remotePath });
       const stat = await vscode.workspace.fs.stat(uri);
       if (!(stat.type & vscode.FileType.Directory)) throw new Error('该路径不是文件夹。');
-    } else if (!this.session?.available || !await this.session.isDirectory(remotePath)) throw new Error('目录已失效或后台浏览已断开，请刷新或重新连接。');
+    } else if (this.sessionAlias !== alias || !this.session?.available || !await this.session.isDirectory(remotePath)) {
+      throw new Error('目录已失效或后台浏览已断开，请刷新或重新连接。');
+    }
   }
 
   private async list(alias: string, remotePath: string): Promise<void> {
@@ -500,7 +731,7 @@ class WorkspaceManager implements vscode.Disposable {
           .sort((a, b) => a.name.localeCompare(b.name));
         backend = '当前 Remote SSH 连接';
       } else {
-        if (!this.session?.available) throw new Error('请先连接此服务器。');
+        if (this.sessionAlias !== alias || !this.session?.available) throw new Error('请先连接此服务器。');
         entries = await this.session.listDirectories(normalized);
         backend = 'SFTP 后台浏览';
       }
@@ -514,14 +745,22 @@ class WorkspaceManager implements vscode.Disposable {
       if (generation !== this.generation || sequence !== this.requestSequence) return;
       this.report(error);
       this.post({ type: 'status', message: '目录读取失败；保留上次浏览位置。', busy: false,
-        connected: this.currentRemote()?.alias === alias || !!this.session?.available });
+        connected: this.currentRemote()?.alias === alias || (this.sessionAlias === alias && !!this.session?.available) });
     }
   }
 
   private disconnect(): void {
+    this.disconnectBrowser();
+    this.cloneSequence += 1;
+    this.cloneController?.abort(); this.cloneController = undefined;
+    this.cloneScope = undefined; this.cloneProgress = undefined;
+  }
+
+  private disconnectBrowser(): void {
     this.generation += 1; this.requestSequence += 1;
     this.connection?.abort(); this.connection = undefined;
     this.session?.close(); this.session = undefined;
+    this.sessionAlias = undefined;
   }
 
   dispose(): void {

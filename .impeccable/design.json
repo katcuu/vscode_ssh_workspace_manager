@@ -1,0 +1,562 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-06T08:54:50.343355Z",
+  "title": "Design System: SSH Workspace Manager",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "操作强调色",
+        "tonalRamp": [
+          "oklch(from var(--vscode-button-background) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-button-background) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-background) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-background) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-background) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-background) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-background) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-background) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "primary-text": {
+        "role": "neutral",
+        "displayName": "主操作文字",
+        "tonalRamp": [
+          "oklch(from var(--vscode-button-foreground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-button-foreground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-foreground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-foreground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-foreground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-foreground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-foreground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-foreground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "主操作悬停",
+        "tonalRamp": [
+          "oklch(from var(--vscode-button-hoverBackground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-button-hoverBackground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-hoverBackground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-hoverBackground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-hoverBackground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-hoverBackground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-hoverBackground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-hoverBackground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "secondary-control": {
+        "role": "neutral",
+        "displayName": "辅助操作底色",
+        "tonalRamp": [
+          "oklch(from var(--vscode-button-secondaryBackground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-button-secondaryBackground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-secondaryBackground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-secondaryBackground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-secondaryBackground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-secondaryBackground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-secondaryBackground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-secondaryBackground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "secondary-control-text": {
+        "role": "neutral",
+        "displayName": "辅助操作文字",
+        "tonalRamp": [
+          "oklch(from var(--vscode-button-secondaryForeground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-button-secondaryForeground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-secondaryForeground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-secondaryForeground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-secondaryForeground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-secondaryForeground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-secondaryForeground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-secondaryForeground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "secondary-control-hover": {
+        "role": "neutral",
+        "displayName": "辅助操作悬停",
+        "tonalRamp": [
+          "oklch(from var(--vscode-button-secondaryHoverBackground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-button-secondaryHoverBackground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-secondaryHoverBackground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-secondaryHoverBackground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-secondaryHoverBackground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-secondaryHoverBackground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-secondaryHoverBackground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-secondaryHoverBackground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "workspace": {
+        "role": "neutral",
+        "displayName": "工作区底色",
+        "tonalRamp": [
+          "oklch(from var(--vscode-editor-background) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-editor-background) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-editor-background) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-editor-background) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-editor-background) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-editor-background) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-editor-background) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-editor-background) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "正文色",
+        "tonalRamp": [
+          "oklch(from var(--vscode-foreground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-foreground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-foreground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-foreground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-foreground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-foreground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-foreground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-foreground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "辅助信息色",
+        "tonalRamp": [
+          "oklch(from var(--vscode-descriptionForeground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-descriptionForeground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-descriptionForeground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-descriptionForeground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-descriptionForeground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-descriptionForeground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-descriptionForeground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-descriptionForeground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "divider": {
+        "role": "neutral",
+        "displayName": "分区与行分隔",
+        "tonalRamp": [
+          "oklch(from var(--vscode-panel-border) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-panel-border) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-panel-border) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-panel-border) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-panel-border) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-panel-border) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-panel-border) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-panel-border) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "control-border": {
+        "role": "neutral",
+        "displayName": "按钮描边",
+        "tonalRamp": [
+          "oklch(from var(--vscode-button-border, var(--vscode-panel-border)) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-button-border, var(--vscode-panel-border)) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-border, var(--vscode-panel-border)) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-border, var(--vscode-panel-border)) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-border, var(--vscode-panel-border)) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-button-border, var(--vscode-panel-border)) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-button-border, var(--vscode-panel-border)) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-button-border, var(--vscode-panel-border)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "键盘焦点",
+        "tonalRamp": [
+          "oklch(from var(--vscode-focusBorder) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-focusBorder) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-focusBorder) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-focusBorder) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-focusBorder) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-focusBorder) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-focusBorder) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-focusBorder) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "field": {
+        "role": "neutral",
+        "displayName": "字段底色",
+        "tonalRamp": [
+          "oklch(from var(--vscode-input-background) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-input-background) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-input-background) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-input-background) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-input-background) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-input-background) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-input-background) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-input-background) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "field-text": {
+        "role": "neutral",
+        "displayName": "字段文字",
+        "tonalRamp": [
+          "oklch(from var(--vscode-input-foreground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-input-foreground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-input-foreground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-input-foreground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-input-foreground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-input-foreground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-input-foreground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-input-foreground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "field-border": {
+        "role": "neutral",
+        "displayName": "字段描边",
+        "tonalRamp": [
+          "oklch(from var(--vscode-input-border, var(--vscode-panel-border)) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-input-border, var(--vscode-panel-border)) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-input-border, var(--vscode-panel-border)) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-input-border, var(--vscode-panel-border)) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-input-border, var(--vscode-panel-border)) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-input-border, var(--vscode-panel-border)) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-input-border, var(--vscode-panel-border)) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-input-border, var(--vscode-panel-border)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "link": {
+        "role": "primary",
+        "displayName": "路径链接",
+        "tonalRamp": [
+          "oklch(from var(--vscode-textLink-foreground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-textLink-foreground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-textLink-foreground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-textLink-foreground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-textLink-foreground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-textLink-foreground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-textLink-foreground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-textLink-foreground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "selection": {
+        "role": "neutral",
+        "displayName": "目录选中底色",
+        "tonalRamp": [
+          "oklch(from var(--vscode-list-activeSelectionBackground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-list-activeSelectionBackground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-list-activeSelectionBackground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-list-activeSelectionBackground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-list-activeSelectionBackground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-list-activeSelectionBackground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-list-activeSelectionBackground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-list-activeSelectionBackground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "selection-text": {
+        "role": "neutral",
+        "displayName": "目录选中文字",
+        "tonalRamp": [
+          "oklch(from var(--vscode-list-activeSelectionForeground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-list-activeSelectionForeground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-list-activeSelectionForeground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-list-activeSelectionForeground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-list-activeSelectionForeground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-list-activeSelectionForeground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-list-activeSelectionForeground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-list-activeSelectionForeground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "notice": {
+        "role": "neutral",
+        "displayName": "任务提示底色",
+        "tonalRamp": [
+          "oklch(from var(--vscode-textBlockQuote-background) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-textBlockQuote-background) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-textBlockQuote-background) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-textBlockQuote-background) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-textBlockQuote-background) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-textBlockQuote-background) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-textBlockQuote-background) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-textBlockQuote-background) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "success": {
+        "role": "neutral",
+        "displayName": "成功描边",
+        "tonalRamp": [
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-focusBorder)) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-focusBorder)) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-focusBorder)) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-focusBorder)) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-focusBorder)) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-focusBorder)) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-focusBorder)) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-focusBorder)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "success-text": {
+        "role": "neutral",
+        "displayName": "成功标题",
+        "tonalRamp": [
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-foreground)) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-foreground)) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-foreground)) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-foreground)) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-foreground)) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-foreground)) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-foreground)) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-testing-iconPassed, var(--vscode-foreground)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "error": {
+        "role": "neutral",
+        "displayName": "失败提示底色",
+        "tonalRamp": [
+          "oklch(from var(--vscode-inputValidation-errorBackground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-inputValidation-errorBackground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-inputValidation-errorBackground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-inputValidation-errorBackground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-inputValidation-errorBackground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-inputValidation-errorBackground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-inputValidation-errorBackground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-inputValidation-errorBackground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "error-border": {
+        "role": "neutral",
+        "displayName": "失败描边",
+        "tonalRamp": [
+          "oklch(from var(--vscode-inputValidation-errorBorder) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-inputValidation-errorBorder) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-inputValidation-errorBorder) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-inputValidation-errorBorder) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-inputValidation-errorBorder) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-inputValidation-errorBorder) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-inputValidation-errorBorder) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-inputValidation-errorBorder) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "error-text": {
+        "role": "neutral",
+        "displayName": "失败标题",
+        "tonalRamp": [
+          "oklch(from var(--vscode-errorForeground) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-errorForeground) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-errorForeground) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-errorForeground) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-errorForeground) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-errorForeground) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-errorForeground) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-errorForeground) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "progress": {
+        "role": "primary",
+        "displayName": "任务进度",
+        "tonalRamp": [
+          "oklch(from var(--vscode-progressBar-background) 0.15 calc(c * 0.25) h)",
+          "oklch(from var(--vscode-progressBar-background) 0.27 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-progressBar-background) 0.39 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-progressBar-background) 0.51 calc(c * 1) h)",
+          "oklch(from var(--vscode-progressBar-background) 0.63 calc(c * 1) h)",
+          "oklch(from var(--vscode-progressBar-background) 0.75 calc(c * 0.85) h)",
+          "oklch(from var(--vscode-progressBar-background) 0.87 calc(c * 0.6) h)",
+          "oklch(from var(--vscode-progressBar-background) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "icon-ink": {
+        "role": "neutral",
+        "displayName": "图标深墨底色",
+        "tonalRamp": [
+          "oklch(from #142D3B 0.15 calc(c * 0.25) h)",
+          "oklch(from #142D3B 0.27 calc(c * 0.6) h)",
+          "oklch(from #142D3B 0.39 calc(c * 0.85) h)",
+          "oklch(from #142D3B 0.51 calc(c * 1) h)",
+          "oklch(from #142D3B 0.63 calc(c * 1) h)",
+          "oklch(from #142D3B 0.75 calc(c * 0.85) h)",
+          "oklch(from #142D3B 0.87 calc(c * 0.6) h)",
+          "oklch(from #142D3B 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "icon-mint": {
+        "role": "primary",
+        "displayName": "图标薄荷线条",
+        "tonalRamp": [
+          "oklch(from #88D6CD 0.15 calc(c * 0.25) h)",
+          "oklch(from #88D6CD 0.27 calc(c * 0.6) h)",
+          "oklch(from #88D6CD 0.39 calc(c * 0.85) h)",
+          "oklch(from #88D6CD 0.51 calc(c * 1) h)",
+          "oklch(from #88D6CD 0.63 calc(c * 1) h)",
+          "oklch(from #88D6CD 0.75 calc(c * 0.85) h)",
+          "oklch(from #88D6CD 0.87 calc(c * 0.6) h)",
+          "oklch(from #88D6CD 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "activity-artwork": {
+        "role": "neutral",
+        "displayName": "活动栏源图线条",
+        "tonalRamp": [
+          "oklch(from #C5C5C5 0.15 calc(c * 0.25) h)",
+          "oklch(from #C5C5C5 0.27 calc(c * 0.6) h)",
+          "oklch(from #C5C5C5 0.39 calc(c * 0.85) h)",
+          "oklch(from #C5C5C5 0.51 calc(c * 1) h)",
+          "oklch(from #C5C5C5 0.63 calc(c * 1) h)",
+          "oklch(from #C5C5C5 0.75 calc(c * 0.85) h)",
+          "oklch(from #C5C5C5 0.87 calc(c * 0.6) h)",
+          "oklch(from #C5C5C5 0.95 calc(c * 0.25) h)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "页面主标题",
+        "purpose": "管理页主标题。"
+      },
+      "title": {
+        "displayName": "分区标题",
+        "purpose": "项目清单、浏览与克隆分区标题。"
+      },
+      "project-name": {
+        "displayName": "项目名称",
+        "purpose": "重复项目行的主要识别文字。"
+      },
+      "body": {
+        "displayName": "界面正文",
+        "purpose": "说明、标准按钮、字段和连接状态。"
+      },
+      "metadata": {
+        "displayName": "辅助信息",
+        "purpose": "来源、时间、数量、标签和紧凑操作。"
+      },
+      "path": {
+        "displayName": "完整路径",
+        "purpose": "项目行的等宽完整路径。"
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "split-panes",
+        "value": "min-width: 1080px and min-height: 680px"
+      },
+      {
+        "name": "project-actions-inline",
+        "value": "container min-width: 700px"
+      },
+      {
+        "name": "compact-page",
+        "value": "720px"
+      },
+      {
+        "name": "compact-fields",
+        "value": "460px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "主操作按钮",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "连接、克隆及浏览区的新窗口打开。悬停、焦点和禁用沿用当前实现。",
+      "html": "<button class=\"ds-primary-button\">连接并浏览</button>",
+      "css": ".ds-primary-button{cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid var(--vscode-button-border, var(--vscode-panel-border));font:13px/1.45 var(--vscode-font-family, sans-serif);background:var(--vscode-button-background);color:var(--vscode-button-foreground);}.ds-primary-button:hover{background:var(--vscode-button-hoverBackground);}.ds-primary-button:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}.ds-primary-button:disabled{cursor:default;opacity:.45;}"
+    },
+    {
+      "name": "辅助操作按钮",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "记录、添加、当前窗口及其他辅助操作。",
+      "html": "<button class=\"ds-secondary-button\">记录当前文件夹</button>",
+      "css": ".ds-secondary-button{cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid var(--vscode-button-border, var(--vscode-panel-border));font:13px/1.45 var(--vscode-font-family, sans-serif);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);}.ds-secondary-button:hover{background:var(--vscode-button-secondaryHoverBackground);}.ds-secondary-button:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}.ds-secondary-button:disabled{cursor:default;opacity:.45;}"
+    },
+    {
+      "name": "搜索字段",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "主题字段底色、前景、细边框与键盘焦点。",
+      "html": "<input class=\"ds-search-input\" type=\"search\" placeholder=\"搜索项目名称、完整路径或服务器\" aria-label=\"搜索文件夹\">",
+      "css": ".ds-search-input{font:13px/1.45 var(--vscode-font-family, sans-serif);min-width:0;border:1px solid var(--vscode-input-border, var(--vscode-panel-border));border-radius:4px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);padding:5px 9px;}.ds-search-input:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}"
+    },
+    {
+      "name": "边框分区",
+      "kind": "card",
+      "refersTo": "section",
+      "description": "同画布底色的轻圆角分区。标题与数量分层，不添加阴影。",
+      "html": "<section class=\"ds-section\"><div class=\"ds-section-heading\"><h2>本地项目文件夹</h2><p>2 个文件夹</p></div></section>",
+      "css": ".ds-section{font:13px/1.45 var(--vscode-font-family, sans-serif);color:var(--vscode-foreground);border:1px solid var(--vscode-panel-border);border-radius:8px;padding:12px;margin-bottom:0;}.ds-section-heading{margin-bottom:10px;}.ds-section h2{font-size:14px;margin:0;font-weight:600;}.ds-section p{margin:5px 0;color:var(--vscode-descriptionForeground);font-size:12px;}@media(max-width:720px){.ds-section{padding:12px;}}"
+    },
+    {
+      "name": "路径面包屑",
+      "kind": "nav",
+      "refersTo": "breadcrumb",
+      "description": "透明按钮、路径链接色与可折行斜杠分隔；保留键盘焦点。",
+      "html": "<nav class=\"ds-breadcrumbs\" aria-label=\"路径导航\"><button>/</button><span> / </span><button>home</button><span> / </span><button>dev</button><span> / </span><button>projects</button></nav>",
+      "css": ".ds-breadcrumbs{font:13px/1.45 var(--vscode-font-family, sans-serif);color:var(--vscode-foreground);display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-width:0;}.ds-breadcrumbs button{cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid var(--vscode-button-border, var(--vscode-panel-border));font:13px/1.45 var(--vscode-font-family, sans-serif);font-size:12px;padding:2px 5px;border-color:transparent;background:transparent;color:var(--vscode-textLink-foreground);overflow-wrap:anywhere;}.ds-breadcrumbs button:hover{background:transparent;}.ds-breadcrumbs button:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}.ds-breadcrumbs button:disabled{cursor:default;opacity:.45;}"
+    },
+    {
+      "name": "项目行",
+      "kind": "custom",
+      "refersTo": "button-project-action",
+      "description": "名称与辅助信息在上、完整等宽路径另起一行，右侧紧凑操作可换行。",
+      "html": "<div class=\"ds-project-list\"><div class=\"ds-project\"><div><span class=\"ds-project-name\">demo-project</span><span class=\"ds-project-meta\">本地文件 · 尚未打开</span><code class=\"ds-project-path\">/home/dev/projects/demo-project</code></div><div class=\"ds-project-actions\"><button aria-label=\"收藏此文件夹\" aria-pressed=\"false\">☆</button><button>重命名</button><button>当前窗口</button><button>新窗口</button><button aria-label=\"删除记录：demo-project\">删除记录</button></div></div></div>",
+      "css": ".ds-project{font:13px/1.45 var(--vscode-font-family, sans-serif);color:var(--vscode-foreground);display:grid;grid-template-columns:minmax(0,1fr);gap:6px;align-items:center;padding:8px 0;border-top:1px solid var(--vscode-panel-border);}.ds-project-name{font-size:14px;font-weight:600;margin-right:8px;}.ds-project-meta{color:var(--vscode-descriptionForeground);font-size:12px;}.ds-project-path{display:block;font-size:12px;font-family:var(--vscode-editor-font-family,monospace);margin-top:3px;overflow-wrap:anywhere;word-break:break-word;}.ds-project-actions{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;}.ds-project-actions button{cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid var(--vscode-button-border, var(--vscode-panel-border));font:13px/1.45 var(--vscode-font-family, sans-serif);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);min-height:26px;padding:3px 7px;font-size:12px;}.ds-project-actions button:hover{background:var(--vscode-button-secondaryHoverBackground);}.ds-project-actions button:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}.ds-project-actions button:disabled{cursor:default;opacity:.45;}.ds-project-list{container-type:inline-size;}.ds-project-actions{justify-content:flex-start;}@container(min-width:700px){.ds-project{grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;}.ds-project-actions{justify-content:flex-end;}}"
+    },
+    {
+      "name": "目录选中行",
+      "kind": "custom",
+      "refersTo": "directory-selected",
+      "description": "名称选择按钮与进入按钮分列，选中时使用宿主的配对背景和文字。示例不执行导航。",
+      "html": "<div class=\"ds-directory ds-directory-selected\"><button class=\"ds-directory-select\" aria-pressed=\"true\">▱  demo-project</button><button class=\"ds-directory-enter\">进入 →</button></div>",
+      "css": ".ds-directory{font:13px/1.45 var(--vscode-font-family, sans-serif);color:var(--vscode-foreground);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;border-bottom:1px solid var(--vscode-panel-border);}.ds-directory-selected{background:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground);}.ds-directory button{cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid var(--vscode-button-border, var(--vscode-panel-border));font:13px/1.45 var(--vscode-font-family, sans-serif);border:none;border-radius:0;background:transparent;color:inherit;}.ds-directory .ds-directory-select{min-height:30px;padding:5px 9px;text-align:left;overflow-wrap:anywhere;}.ds-directory .ds-directory-enter{font-size:12px;opacity:.8;padding:4px 9px;}.ds-directory button:hover{background:transparent;}.ds-directory button:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}.ds-directory button:disabled{cursor:default;opacity:.45;}"
+    },
+    {
+      "name": "连接摘要",
+      "kind": "custom",
+      "refersTo": "connection-status",
+      "description": "左侧主题焦点线、提示底色和可换行的状态文字。",
+      "html": "<p class=\"ds-connection\" role=\"status\">SFTP 后台浏览 · 3 个子文件夹</p>",
+      "css": ".ds-connection{font:13px/1.45 var(--vscode-font-family, sans-serif);color:var(--vscode-foreground);border-left:3px solid var(--vscode-focusBorder);background:var(--vscode-textBlockQuote-background);padding:6px 9px;margin:10px 0;overflow-wrap:anywhere;}"
+    },
+    {
+      "name": "克隆结果",
+      "kind": "custom",
+      "refersTo": "clone-result",
+      "description": "成功示例，包含状态标识、完整路径和两种打开操作。进度与失败等状态样式随例提供；所有文案均为演示。",
+      "html": "<section class=\"ds-clone-result ds-clone-success\" role=\"status\" aria-live=\"polite\"><div class=\"ds-clone-content\"><div class=\"ds-clone-heading\"><strong>✓ 本机克隆完成</strong><button class=\"ds-clone-dismiss\" aria-label=\"关闭克隆结果\">×</button></div><p class=\"ds-clone-message\">仓库已克隆，可以打开项目。</p><code class=\"ds-clone-path\">/home/dev/projects/demo-project</code></div><div class=\"ds-clone-actions\"><button class=\"ds-clone-current\">当前窗口打开</button><button class=\"ds-clone-new\">新窗口打开</button></div></section>",
+      "css": ".ds-clone-result{font:13px/1.45 var(--vscode-font-family, sans-serif);color:var(--vscode-foreground);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--vscode-focusBorder);border-radius:5px;background:var(--vscode-textBlockQuote-background);}.ds-clone-success{border-color:var(--vscode-testing-iconPassed,var(--vscode-focusBorder));}.ds-clone-success .ds-clone-heading strong{color:var(--vscode-testing-iconPassed,var(--vscode-foreground));}.ds-clone-cancelled{border-color:var(--vscode-descriptionForeground);}.ds-clone-failed{border-color:var(--vscode-inputValidation-errorBorder);background:var(--vscode-inputValidation-errorBackground);}.ds-clone-failed .ds-clone-heading strong{color:var(--vscode-errorForeground);}.ds-clone-content{flex:1;min-width:0;}.ds-clone-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;}.ds-clone-heading strong{font-size:13px;}.ds-clone-message{margin:4px 0;overflow-wrap:anywhere;}.ds-clone-path{display:block;margin-top:5px;font-size:12px;overflow-wrap:anywhere;word-break:break-word;}.ds-clone-result progress{display:block;width:100%;height:5px;margin-top:6px;accent-color:var(--vscode-progressBar-background);}.ds-clone-actions{display:flex;flex-wrap:wrap;gap:4px;flex:0 0 auto;align-items:flex-start;}.ds-clone-current{cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid var(--vscode-button-border, var(--vscode-panel-border));font:13px/1.45 var(--vscode-font-family, sans-serif);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);}.ds-clone-current:hover{background:var(--vscode-button-secondaryHoverBackground);}.ds-clone-current:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}.ds-clone-current:disabled{cursor:default;opacity:.45;}.ds-clone-new{cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid var(--vscode-button-border, var(--vscode-panel-border));font:13px/1.45 var(--vscode-font-family, sans-serif);background:var(--vscode-button-background);color:var(--vscode-button-foreground);}.ds-clone-new:hover{background:var(--vscode-button-hoverBackground);}.ds-clone-new:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}.ds-clone-new:disabled{cursor:default;opacity:.45;}.ds-clone-dismiss{cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid var(--vscode-button-border, var(--vscode-panel-border));font:13px/1.45 var(--vscode-font-family, sans-serif);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);flex:0 0 auto;min-width:30px;padding:3px 7px;font-size:16px;}.ds-clone-dismiss:hover{background:var(--vscode-button-secondaryHoverBackground);}.ds-clone-dismiss:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}.ds-clone-dismiss:disabled{cursor:default;opacity:.45;}@media(max-width:720px){.ds-clone-result{flex-direction:column;}.ds-clone-actions{flex-wrap:wrap;}}@media(max-width:430px){.ds-clone-actions button{padding:6px 8px;}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "开发者的项目索引",
+    "overview": "界面围绕查找、辨认和打开项目组织信息。原生左侧栏承载来源导航，右侧 Webview 提供项目名称、来源与完整路径的阅读空间。主要视觉线索是文字层级、细边框、操作强调色和可辨认的状态。\n\n组件的描述为“克制、直接、状态明确”。工作区沿用 VS Code 的字体和主题语义，固定的品牌颜色保留在图标资源中。按钮、路径和提示优先呈现其用途；当前管理页没有自定义阴影、装饰性渐变或自定义过渡动画。\n\n本文依据 [管理页样式](media/dashboard.css)、[结构](media/dashboard.html)、[交互](media/dashboard.js)、[原生侧栏](src/serverTree.ts)与现有图标记录，采用 [DESIGN.md 格式](https://raw.githubusercontent.com/google-labs-code/design.md/main/docs/spec.md)。本次观察了已安装扩展的桌面深色界面；断点、其他主题和任务状态的规格来自源码扫描，不代表它们都经过本轮实机验收。前置产品约束见 [PRODUCT.md](PRODUCT.md)。",
+    "keyCharacteristics": [
+      "宿主主题决定工作区颜色，原生侧栏负责来源导航。",
+      "名称、来源与完整路径形成可扫描的项目行。",
+      "紧凑操作与可换行内容共存，长列表有自己的滚动区域。",
+      "连接与克隆使用文字、状态标识和进度共同反馈。"
+    ],
+    "rules": [
+      {
+        "name": "The Host Theme Rule.",
+        "body": "工作区保留宿主语义映射，不把某次截图的颜色固定到其他主题。",
+        "section": "colors"
+      },
+      {
+        "name": "The Readable Path Rule.",
+        "body": "通过收缩、换行和局部滚动保留完整路径与操作入口，不把窄侧栏中的截断问题带回管理页。",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Surface Rule.",
+        "body": "延续边框与底色分层的现有语法；记录或复用组件时不顺便添加悬浮卡片和阴影层级。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** 使用宿主主题变量及其现有回退链，保留配对的背景色与文字色。",
+      "**Do** 通过名称、辅助信息和等宽完整路径形成稳定的信息层级。",
+      "**Do** 复用现有圆角、细边框、键盘焦点轮廓和按钮禁用状态。",
+      "**Do** 在受限列表内保留滚动，并在窄视口中让文字与操作自然换行。",
+      "**Do** 让连接、克隆和目录选择同时有文字或标识反馈。"
+    ],
+    "donts": [
+      "**Don't** 把当前深色截图、图标色或预览色带当作所有主题的工作区配色。",
+      "**Don't** 把所有内容塞回原生窄侧栏，或用路径截断替代现有的完整路径换行。",
+      "**Don't** 在记录现有系统时新增阴影、装饰渐变、字体或组件动效。",
+      "**Don't** 隐去焦点轮廓，或只用颜色表达克隆结果与选中状态。",
+      "**Don't** 把全局克隆反馈误写成悬浮固定栏，或把目录和项目行改成整行点击即打开。"
+    ]
+  }
+}

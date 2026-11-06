@@ -6,6 +6,8 @@
 - 推送形如 vX.Y.Z 的 Git tag：运行相同的三平台检查，并验证 tag 与 package.json 的版本完全一致。检查通过后，GitHub Release 附上 VSIX，同时把同一个 VSIX 发布到 Visual Studio Marketplace。
 - 普通分支提交不会创建 GitHub Release，也不会上传 Marketplace。
 
+GitHub Release 的正文从 `CHANGELOG.md` 对应版本提取，不再只生成提交比较链接。发布前必须把该版本的“未发布”标题换成发布日期，并核对 `node scripts/release-notes.mjs vX.Y.Z` 的输出。重跑工作流也会同步该说明。
+
 自动发布不会替开发者递增版本号。新版本需要先在 main 更新扩展版本和 CHANGELOG，再通过一个匹配的 tag 发布。
 
 ## 发布新版本

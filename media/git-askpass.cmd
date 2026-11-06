@@ -1,0 +1,3 @@
+@echo off
+setlocal DisableDelayedExpansion
+"%SSH_WORKSPACE_MANAGER_ASKPASS_NODE%" "%SSH_WORKSPACE_MANAGER_ASKPASS_HELPER%" %*

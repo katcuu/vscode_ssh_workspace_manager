@@ -9,6 +9,7 @@ import { createServer as createNetServer, Server as NetServer } from 'node:net';
 import { execFileSync } from 'node:child_process';
 import { Server, utils } from 'ssh2';
 import { connectSftp, ConnectionPrompts } from '../src/sftp';
+import { GitCloneProgress } from '../src/gitClone';
 import { parseResolvedConfig, ResolvedSshConfig } from '../src/sshConfig';
 import { SshDiagnostics } from '../src/sshDiagnostics';
 
@@ -22,6 +23,9 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
   const directory = await mkdtemp(path.join(tmpdir(), 'ssh-manager-sftp-'));
   const clients = new Set<import('ssh2').Connection>();
   const attempts: string[] = [];
+  const cloneCommands: string[] = [];
+  const cloneInputs: string[] = [];
+  let ptyRequested = false;
   const { STATUS_CODE } = utils.sftp;
   const server = new Server({ hostKeys: [hostPrivateKey] }, connection => {
     clients.add(connection); connection.on('close', () => clients.delete(connection)); connection.on('error', () => {});
@@ -32,7 +36,42 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
       else context.reject(['publickey', 'password']);
     });
     connection.on('ready', () => connection.on('session', accept => {
-      accept().on('sftp', acceptSftp => {
+      const sshSession = accept();
+      sshSession.on('pty', (acceptPty, _reject, _info) => { ptyRequested = true; acceptPty(); });
+      sshSession.on('exec', (acceptExec, _reject, info) => {
+        const channel = acceptExec();
+        cloneCommands.push(info.command);
+        if (info.command.includes('hang.git')) {
+          channel.write('Receiving objects: 1% (1/100)\r');
+          channel.on('data', (chunk: Buffer) => {
+            if (chunk.toString().includes('\x03')) { channel.exit(130); channel.end(); }
+          });
+          return;
+        }
+        if (info.command.includes('ssh-password.git')) {
+          channel.on('data', (chunk: Buffer) => {
+            const input = chunk.toString();
+            cloneInputs.push(input.trim());
+            if (input.includes('fixture-ssh-password')) {
+              channel.write('Receiving objects: 100% (1/1), 1 KiB | 1.0 MiB/s\r');
+              setImmediate(() => { channel.write('\n'); channel.exit(0); channel.end(); });
+            }
+          });
+          channel.write("git@example.test's password: ");
+          return;
+        }
+        channel.on('data', (chunk: Buffer) => {
+          const input = chunk.toString();
+          cloneInputs.push(input.trim());
+          if (input.includes('fixture-user')) channel.write("Password for 'https://fixture-user@example.test': ");
+          if (input.includes('fixture-token')) {
+            channel.write('Receiving objects:  72% (18/25), 1.30 MiB | 2.0 MiB/s\r');
+            setImmediate(() => { channel.write('\nResolving deltas: 100% (2/2)\n'); channel.exit(0); channel.end(); });
+          }
+        });
+        channel.write("Username for 'https://example.test': ");
+      });
+      sshSession.on('sftp', acceptSftp => {
         const sftp = acceptSftp();
         const readHandles = new Set<number>(); let nextHandle = 1;
         const directories = new Set(['/home/test', '/home/test/中文 code#%', '/home/test/link', '/home/test/.hidden']);
@@ -88,6 +127,38 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
   assert.ok(!entries.some(entry => entry.name === 'source.ts'));
   await assert.rejects(() => session.listDirectories('/missing'), /不存在/);
   await assert.rejects(() => session.listDirectories('/denied'), /权限/);
+  const cloneProgress: GitCloneProgress[] = [];
+  const cloneInputsSeen: string[] = [];
+  const repositoryPath = await session.cloneRepository('/home/test/中文 code#%', 'https://example.test/team/workspace.git', {
+    username: async () => { cloneInputsSeen.push('username'); return 'fixture-user'; },
+    password: async () => { cloneInputsSeen.push('password'); return 'fixture-token'; },
+    sshPassword: async (target, username) => { cloneInputsSeen.push(`ssh-password:${username}@${target}`); return 'fixture-ssh-password'; },
+    passphrase: async () => undefined
+  }, new AbortController().signal, progress => cloneProgress.push(progress));
+  assert.equal(repositoryPath, '/home/test/中文 code#%/workspace');
+  assert.deepEqual(cloneInputsSeen, ['username', 'password']);
+  assert.deepEqual(cloneInputs.slice(-2), ['fixture-user', 'fixture-token']);
+  assert.ok(ptyRequested);
+  assert.match(cloneCommands.at(-1) || '', /^stty -echo 2>\/dev\/null \|\| :;/, 'PTY echo is disabled before Git can prompt for credentials');
+  assert.ok(!cloneCommands.at(-1)?.includes('fixture-user') && !cloneCommands.at(-1)?.includes('fixture-token'),
+    'Credentials are entered over the SSH channel and never appear in the Git command');
+  assert.ok(cloneProgress.some(progress => progress.phase === 'receiving' && progress.percent === 72), JSON.stringify(cloneProgress));
+  assert.ok(cloneProgress.some(progress => progress.phase === 'resolving' && progress.percent === 100));
+
+  const sshPasswordPath = await session.cloneRepository('/home/test', 'git@example.test:team/ssh-password.git', {
+    username: async () => undefined, password: async () => undefined,
+    sshPassword: async (target, username) => { cloneInputsSeen.push(`ssh-password:${username}@${target}`); return 'fixture-ssh-password'; },
+    passphrase: async () => undefined
+  }, new AbortController().signal, progress => cloneProgress.push(progress));
+  assert.equal(sshPasswordPath, '/home/test/ssh-password');
+  assert.equal(cloneInputsSeen.at(-1), 'ssh-password:git@example.test');
+  assert.equal(cloneInputs.at(-1), 'fixture-ssh-password');
+  assert.ok(!cloneCommands.at(-1)?.includes('fixture-ssh-password'), 'SSH password is sent through the channel, not the command');
+
+  const cancelClone = new AbortController();
+  await assert.rejects(() => session.cloneRepository('/home/test', 'https://example.test/team/hang.git', {
+    username: async () => undefined, password: async () => undefined, sshPassword: async () => undefined, passphrase: async () => undefined
+  }, cancelClone.signal, progress => { if (progress.phase === 'receiving') cancelClone.abort(); }), /取消/);
   session.close();
   const passwordSession = await connectSftp({ ...config, identityFiles: [] }, prompts, new AbortController().signal);
   assert.equal(passwords, 1); passwordSession.close();

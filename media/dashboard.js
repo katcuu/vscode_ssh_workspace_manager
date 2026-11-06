@@ -2,7 +2,12 @@
   'use strict';
   const vscode = acquireVsCodeApi();
   const $ = id => document.getElementById(id);
-  const state = { servers: [], folders: [], browsePaths: {}, view: 'all', alias: undefined, path: '', entries: [], selected: undefined, connected: false, busy: false, initialized: false };
+  const persistedUiState = vscode.getState() || {};
+  const persistedPaneRatios = persistedUiState.paneRatios || {};
+  const state = { servers: [], folders: [], browsePaths: {}, view: 'all', alias: undefined, path: '', entries: [], selected: undefined, connected: false, busy: false, cloneBusy: false, cloneCanceling: false, cloneScope: undefined, cloneMessage: '', clonePercent: undefined, cloneResult: undefined, localCloneParent: '', paneRatios: {
+    server: Number.isFinite(persistedPaneRatios.server) ? persistedPaneRatios.server : 56,
+    local: Number.isFinite(persistedPaneRatios.local) ? persistedPaneRatios.local : 62.5
+  }, initialized: false };
   const send = (type, args = {}) => vscode.postMessage({ type, ...args });
   const button = (text, action, className = '') => {
     const element = document.createElement('button'); element.textContent = text; element.className = className;
@@ -10,6 +15,56 @@
   };
   const paragraph = (text, className = '') => { const element = document.createElement('p'); element.className = className; element.textContent = text; return element; };
   const target = () => state.selected || state.path;
+  const splitterWidth = 14;
+
+  function paneBounds(view = state.view) {
+    const width = $('main').getBoundingClientRect().width - splitterWidth;
+    if (width <= 0) return { min: 30, max: 70 };
+    const rightMin = view === 'server' ? 400 : 360;
+    const min = Math.max(30, Math.ceil(300 / width * 100));
+    const max = Math.min(70, Math.floor((width - rightMin) / width * 100));
+    return max >= min ? { min, max } : { min: 30, max: 70 };
+  }
+
+  function currentPaneRatio() {
+    const main = $('main').getBoundingClientRect();
+    const saved = $('saved').getBoundingClientRect();
+    const width = main.width - splitterWidth;
+    const measured = width > 0 && saved.width > 0 ? saved.width / width * 100 : state.paneRatios[state.view];
+    const { min, max } = paneBounds();
+    return Math.min(max, Math.max(min, measured));
+  }
+
+  function updateSplitterValue() {
+    if (state.view !== 'server' && state.view !== 'local') return;
+    const splitter = $('paneSplitter');
+    const { min, max } = paneBounds();
+    const percent = Math.round(currentPaneRatio());
+    const rightLabel = state.view === 'server' ? '目录浏览' : '本机克隆';
+    splitter.setAttribute('aria-valuemin', String(min));
+    splitter.setAttribute('aria-valuemax', String(max));
+    splitter.setAttribute('aria-valuenow', String(percent));
+    splitter.setAttribute('aria-valuetext', `${percent}% 项目列表，${100 - percent}% ${rightLabel}`);
+  }
+
+  function applyPaneRatio(value) {
+    const ratio = Math.min(70, Math.max(30, value));
+    $('main').style.setProperty('--saved-pane-track', `${ratio}fr`);
+    $('main').style.setProperty('--right-pane-track', `${100 - ratio}fr`);
+    updateSplitterValue();
+  }
+
+  function setPaneRatio(value, persist = false) {
+    if (state.view !== 'server' && state.view !== 'local') return;
+    const { min, max } = paneBounds();
+    const ratio = Math.min(max, Math.max(min, value));
+    state.paneRatios[state.view] = ratio;
+    applyPaneRatio(ratio);
+    if (persist) {
+      const current = vscode.getState() || {};
+      vscode.setState({ ...current, paneRatios: { ...(current.paneRatios || {}), [state.view]: ratio } });
+    }
+  }
 
   function showNotice(message, error = false) {
     $('notice').textContent = message; $('notice').className = error ? 'error' : ''; $('notice').hidden = false;
@@ -22,11 +77,12 @@
     $('path').value = initialPath || '';
     $('connectionStatus').textContent = alias ? '未连接；点击「连接并浏览」开始' : '从左侧选择具体服务器后可连接并浏览。';
     $('notice').hidden = true;
-    renderFolders(); renderBrowser();
+    renderFolders(); renderBrowser(); renderCloneResult();
   }
 
   function renderServerLabel() {
     const server = state.servers.find(server => server.alias === state.alias);
+    $('main').dataset.view = state.view;
     const titles = { all: '全部服务器项目', local: '本地文件夹', history: '最近打开的项目', favorites: '所有收藏项目' };
     $('serverLabel').textContent = state.view === 'server' ? `${server?.label || state.alias} · ${state.alias}` : titles[state.view] || titles.all;
     $('browseServer').textContent = state.alias || '从左侧选择一台服务器';
@@ -36,7 +92,12 @@
     $('addFolder').hidden = state.view !== 'server' && state.view !== 'local';
     $('addFolder').textContent = state.view === 'local' ? '添加本地文件夹' : '手动添加路径';
     $('browser').hidden = state.view !== 'server';
+    $('localClone').hidden = state.view !== 'local';
     $('favoriteFilter').hidden = state.view === 'favorites';
+    $('paneSplitter').hidden = state.view !== 'server' && state.view !== 'local';
+    $('paneSplitter').setAttribute('aria-label', state.view === 'server'
+      ? '调整项目列表和远程目录浏览宽度' : '调整本地项目列表和克隆面板宽度');
+    if (state.view === 'server' || state.view === 'local') applyPaneRatio(state.paneRatios[state.view]);
   }
 
   function renderFolders() {
@@ -91,18 +152,82 @@
   }
 
   function navigate(path) {
-    if (state.busy || !state.connected) return;
+    if (state.busy || state.cloneBusy || !state.connected) return;
     state.selected = undefined; state.busy = true; renderBrowser();
     send('browse', { alias: state.alias, path });
   }
 
+  function renderCloneControls() {
+    const active = state.cloneBusy && state.cloneScope === 'remote';
+    $('repositoryUrl').disabled = !state.connected || state.busy || state.cloneBusy;
+    $('cloneRepository').disabled = !state.connected || state.busy || state.cloneBusy || !target() || !$('repositoryUrl').value.trim();
+    $('cloneDestinationHint').textContent = state.connected && target()
+      ? `${state.alias} : ${target()} · 将按仓库名创建子目录`
+      : '连接并选择一个父目录后，将按仓库名创建子目录。';
+    $('cloneProgress').hidden = !active;
+    $('cloneMessage').textContent = state.cloneMessage;
+    $('cancelClone').disabled = state.cloneCanceling;
+    $('cancelClone').textContent = state.cloneCanceling ? '正在取消…' : '取消';
+    $('clonePercent').hidden = !active;
+    if (active && Number.isFinite(state.clonePercent)) $('clonePercent').value = state.clonePercent;
+    else $('clonePercent').removeAttribute('value');
+  }
+
+  function renderLocalCloneControls() {
+    const active = state.cloneBusy && state.cloneScope === 'local';
+    $('selectLocalCloneParent').disabled = state.cloneBusy;
+    $('localRepositoryUrl').disabled = state.cloneBusy;
+    $('cloneLocalRepository').disabled = state.cloneBusy || !state.localCloneParent || !$('localRepositoryUrl').value.trim();
+    $('localCloneParent').textContent = state.localCloneParent || '尚未选择父文件夹';
+    $('localCloneDestinationHint').textContent = state.localCloneParent
+      ? `${state.localCloneParent} · 将按仓库名创建子目录` : '选择父文件夹后，将按仓库名在本机创建子目录。';
+    $('localCloneProgress').hidden = !active;
+    $('localCloneMessage').textContent = state.cloneMessage;
+    $('cancelLocalClone').disabled = state.cloneCanceling;
+    $('cancelLocalClone').textContent = state.cloneCanceling ? '正在取消…' : '取消';
+    $('localClonePercent').hidden = !active;
+    if (active && Number.isFinite(state.clonePercent)) $('localClonePercent').value = state.clonePercent;
+    else $('localClonePercent').removeAttribute('value');
+  }
+
+  function renderCloneResult() {
+    const operation = state.cloneBusy && state.cloneScope ? state : undefined;
+    const result = state.cloneResult;
+    const panel = $('cloneResult');
+    panel.hidden = !operation && !result;
+    if (panel.hidden) return;
+    panel.className = `clone-result ${operation ? 'running' : result.state}`;
+    $('cloneResultTitle').textContent = operation
+      ? `… ${operation.cloneScope === 'local' ? '正在克隆到本机' : '正在克隆到服务器'}${operation.clonePercent === undefined ? '' : ` · ${operation.clonePercent}%`}`
+      : result.state === 'success' ? `✓ ${result.scope === 'local' ? '本机' : '远程'}克隆完成`
+        : result.state === 'cancelled' ? '− 克隆已取消' : `! ${result.scope === 'local' ? '本机' : '远程'}克隆失败`;
+    $('cloneResultMessage').textContent = operation ? operation.cloneMessage : result.message;
+    const resultPath = $('cloneResultPath');
+    resultPath.textContent = result?.path || '';
+    resultPath.hidden = !result?.path;
+    $('cloneResultPercent').hidden = !operation;
+    if (operation && Number.isFinite(operation.clonePercent)) $('cloneResultPercent').value = operation.clonePercent;
+    else $('cloneResultPercent').removeAttribute('value');
+    const canOpen = !operation && result.state === 'success' && !!result.path;
+    $('openCloneCurrent').hidden = !canOpen;
+    $('openCloneNew').hidden = !canOpen;
+    $('cancelCloneGlobal').hidden = !operation;
+    $('cancelCloneGlobal').disabled = !!operation?.cloneCanceling;
+    $('cancelCloneGlobal').textContent = operation?.cloneCanceling ? '正在取消…' : '取消克隆';
+    $('dismissCloneResult').hidden = !!operation;
+  }
+
   function renderBrowser() {
-    $('connect').disabled = !state.alias || state.busy;
+    $('connect').disabled = !state.alias || state.busy || state.cloneBusy;
     $('connect').textContent = state.connected ? '重新连接' : '连接并浏览';
-    $('disconnect').disabled = !state.alias || (!state.connected && !state.busy);
-    for (const id of ['go', 'refresh']) $(id).disabled = !state.connected || state.busy;
-    $('up').disabled = !state.connected || state.busy || !state.path || state.path === '/';
-    for (const id of ['saveTarget', 'openCurrent', 'openNew']) $(id).disabled = !state.connected || state.busy || !target();
+    $('disconnect').disabled = !state.alias || (!state.connected && !state.busy && !state.cloneBusy);
+    for (const id of ['go', 'refresh']) $(id).disabled = !state.connected || state.busy || state.cloneBusy;
+    $('path').disabled = !state.connected || state.busy || state.cloneBusy;
+    $('showHidden').disabled = !state.connected || state.cloneBusy;
+    $('up').disabled = !state.connected || state.busy || state.cloneBusy || !state.path || state.path === '/';
+    for (const id of ['saveTarget', 'openCurrent', 'openNew']) $(id).disabled = !state.connected || state.busy || state.cloneBusy || !target();
+    renderCloneControls();
+    renderLocalCloneControls();
     $('target').textContent = state.alias && target() ? `${state.alias} : ${target()}` : '—';
     $('directories').replaceChildren();
     const entries = state.entries.filter(entry => $('showHidden').checked || !entry.name.startsWith('.'));
@@ -116,24 +241,75 @@
         }
         row.classList.add('selected'); select.setAttribute('aria-pressed', 'true');
         $('target').textContent = `${state.alias} : ${entry.path}`;
+        renderCloneControls();
       }, 'select-directory');
-      select.setAttribute('aria-pressed', String(state.selected === entry.path)); select.disabled = state.busy || !state.connected;
+      select.setAttribute('aria-pressed', String(state.selected === entry.path)); select.disabled = state.busy || state.cloneBusy || !state.connected;
       select.addEventListener('dblclick', () => navigate(entry.path));
-      const enter = button('进入 →', () => navigate(entry.path), 'enter-directory'); enter.disabled = state.busy || !state.connected;
+      const enter = button('进入 →', () => navigate(entry.path), 'enter-directory'); enter.disabled = state.busy || state.cloneBusy || !state.connected;
       row.append(select, enter); $('directories').append(row);
     }
     if (!entries.length) $('directories').append(paragraph(state.connected ? (state.entries.length ? '仅有隐藏目录；可勾选「隐藏目录」。' : '此目录下没有子文件夹，可以直接打开当前目录。') : '连接后在这里浏览服务端文件夹。单击选中，双击进入。', 'empty'));
     $('breadcrumbs').replaceChildren();
     if (state.path) {
-      const root = button('/', () => navigate('/')); root.disabled = state.busy || !state.connected; $('breadcrumbs').append(root);
+      const root = button('/', () => navigate('/')); root.disabled = state.busy || state.cloneBusy || !state.connected; $('breadcrumbs').append(root);
       let path = '';
       for (const part of state.path.split('/').filter(Boolean)) {
         path += `/${part}`;
         const destination = path;
-        const crumb = button(part, () => navigate(destination)); crumb.disabled = state.busy || !state.connected;
+        const crumb = button(part, () => navigate(destination)); crumb.disabled = state.busy || state.cloneBusy || !state.connected;
         const separator = document.createElement('span'); separator.textContent = ' / '; $('breadcrumbs').append(separator, crumb);
       }
     }
+    renderCloneResult();
+  }
+
+  const paneSplitter = $('paneSplitter');
+  let activePointer;
+  let activeResizeView;
+  function resizePaneAt(clientX) {
+    const main = $('main').getBoundingClientRect();
+    const divider = paneSplitter.getBoundingClientRect();
+    const width = main.width - divider.width;
+    if (width <= 0) return;
+    setPaneRatio((clientX - main.left - divider.width / 2) / width * 100);
+  }
+  function finishPaneResize(event) {
+    if (activePointer === undefined || event.pointerId !== activePointer) return;
+    const view = activeResizeView;
+    activePointer = undefined; activeResizeView = undefined;
+    paneSplitter.classList.remove('dragging');
+    if (view === state.view) setPaneRatio(state.paneRatios[view], true);
+  }
+  paneSplitter.addEventListener('pointerdown', event => {
+    if ((state.view !== 'server' && state.view !== 'local') || (event.button !== undefined && event.button !== 0)) return;
+    const divider = paneSplitter.getBoundingClientRect();
+    if (!divider.width || !Number.isFinite(event.clientX)) return;
+    event.preventDefault(); paneSplitter.focus?.();
+    activePointer = event.pointerId; activeResizeView = state.view;
+    if (Number.isFinite(activePointer)) paneSplitter.setPointerCapture?.(activePointer);
+    paneSplitter.classList.add('dragging'); resizePaneAt(event.clientX);
+  });
+  paneSplitter.addEventListener('pointermove', event => {
+    if (activePointer !== undefined && activePointer === event.pointerId && activeResizeView === state.view)
+      resizePaneAt(event.clientX);
+  });
+  paneSplitter.addEventListener('pointerup', finishPaneResize);
+  paneSplitter.addEventListener('pointercancel', finishPaneResize);
+  paneSplitter.addEventListener('keydown', event => {
+    if (state.view !== 'server' && state.view !== 'local') return;
+    const { min, max } = paneBounds();
+    const width = Math.max(1, $('main').getBoundingClientRect().width - splitterWidth);
+    const step = (event.shiftKey ? 48 : 16) / width * 100;
+    const current = currentPaneRatio();
+    const next = event.key === 'ArrowLeft' ? current - step
+      : event.key === 'ArrowRight' ? current + step
+        : event.key === 'Home' ? min : event.key === 'End' ? max : undefined;
+    if (next === undefined) return;
+    event.preventDefault(); setPaneRatio(next, true);
+  });
+  if (typeof ResizeObserver !== 'undefined') {
+    const paneResizeObserver = new ResizeObserver(updateSplitterValue);
+    paneResizeObserver.observe($('main'));
   }
 
   $('record').addEventListener('click', () => send('recordCurrent'));
@@ -142,12 +318,45 @@
   $('favoritesOnly').addEventListener('change', renderFolders);
   $('showHidden').addEventListener('change', () => { state.selected = undefined; renderBrowser(); });
   $('connect').addEventListener('click', () => { state.busy = true; state.connected = false; state.entries = []; state.selected = undefined; renderBrowser(); send('connect', { alias: state.alias }); });
-  $('disconnect').addEventListener('click', () => { state.busy = false; state.connected = false; state.entries = []; state.selected = undefined; renderBrowser(); send('cancel'); });
+  $('disconnect').addEventListener('click', () => { state.busy = false; state.connected = false; state.cloneBusy = false; state.cloneCanceling = false; state.cloneScope = undefined; state.cloneMessage = ''; state.clonePercent = undefined; state.entries = []; state.selected = undefined; renderBrowser(); send('cancel'); });
   $('go').addEventListener('click', () => navigate($('path').value));
   $('path').addEventListener('keydown', event => { if (event.key === 'Enter') navigate($('path').value); });
   $('up').addEventListener('click', () => navigate(state.path.slice(0, state.path.lastIndexOf('/')) || '/'));
   $('refresh').addEventListener('click', () => navigate(state.path));
   $('saveTarget').addEventListener('click', () => send('saveFolder', { alias: state.alias, path: target() }));
+  $('repositoryUrl').addEventListener('input', renderCloneControls);
+  $('cloneRepository').addEventListener('click', () => {
+    if (!state.alias || !state.connected || !target() || !$('repositoryUrl').value.trim()) return;
+    const selectedPath = target();
+    state.cloneBusy = true; state.cloneCanceling = false; state.cloneScope = 'remote'; state.clonePercent = undefined; state.cloneMessage = '正在准备 Git 克隆…';
+    state.cloneResult = undefined;
+    renderBrowser(); send('clone', { alias: state.alias, path: selectedPath, url: $('repositoryUrl').value.trim() });
+  });
+  $('selectLocalCloneParent').addEventListener('click', () => send('selectLocalCloneParent'));
+  $('localRepositoryUrl').addEventListener('input', renderLocalCloneControls);
+  $('cloneLocalRepository').addEventListener('click', () => {
+    if (!state.localCloneParent || !$('localRepositoryUrl').value.trim() || state.cloneBusy) return;
+    state.cloneBusy = true; state.cloneCanceling = false; state.cloneScope = 'local'; state.clonePercent = undefined; state.cloneMessage = '正在准备本机 Git 克隆…';
+    state.cloneResult = undefined;
+    renderLocalCloneControls();
+    renderCloneResult();
+    send('cloneLocal', { parentPath: state.localCloneParent, url: $('localRepositoryUrl').value.trim() });
+  });
+  $('cancelLocalClone').addEventListener('click', () => {
+    if (!state.cloneBusy || state.cloneScope !== 'local' || state.cloneCanceling) return;
+    state.cloneCanceling = true; state.cloneMessage = '正在取消克隆…'; renderLocalCloneControls(); renderCloneResult(); send('cancelClone');
+  });
+  $('cancelClone').addEventListener('click', () => {
+    if (!state.cloneBusy || state.cloneCanceling) return;
+    state.cloneCanceling = true; state.cloneMessage = '正在取消克隆…'; renderCloneControls(); renderCloneResult(); send('cancelClone');
+  });
+  $('cancelCloneGlobal').addEventListener('click', () => {
+    if (!state.cloneBusy || state.cloneCanceling) return;
+    state.cloneCanceling = true; state.cloneMessage = '正在取消克隆…'; renderBrowser(); send('cancelClone');
+  });
+  $('dismissCloneResult').addEventListener('click', () => { state.cloneResult = undefined; renderCloneResult(); send('dismissCloneResult'); });
+  $('openCloneCurrent').addEventListener('click', () => send('openCloneResult', { mode: 'current' }));
+  $('openCloneNew').addEventListener('click', () => send('openCloneResult', { mode: 'new' }));
   for (const [id, mode] of [['openCurrent', 'current'], ['openNew', 'new']]) $(id).addEventListener('click', () => send('open', { alias: state.alias, path: target(), mode, fromBrowser: true }));
 
   window.addEventListener('message', event => {
@@ -156,10 +365,20 @@
     switch (message.type) {
       case 'snapshot':
         state.servers = message.servers; state.folders = message.folders; state.browsePaths = message.browsePaths;
+        state.localCloneParent = message.localCloneParent || state.localCloneParent;
+        if (Object.hasOwn(message, 'cloneResult')) state.cloneResult = message.cloneResult || undefined;
         if (!state.initialized || state.alias !== message.selectedAlias || state.view !== message.selectedView)
           chooseView(message.selectedView, message.selectedAlias, message.initialPath);
+        if (Object.hasOwn(message, 'cloneOperation')) {
+          const operation = message.cloneOperation;
+          state.cloneBusy = !!operation;
+          state.cloneScope = operation?.scope;
+          state.cloneCanceling = operation?.canceling === true;
+          state.cloneMessage = operation?.message || '';
+          state.clonePercent = Number.isFinite(operation?.percent) ? operation.percent : undefined;
+        }
         state.initialized = true;
-        renderServerLabel(); renderFolders(); renderBrowser();
+        renderServerLabel(); renderFolders(); renderBrowser(); renderCloneResult();
         break;
       case 'browseReset':
         if (message.alias !== state.alias) return;
@@ -173,6 +392,31 @@
       case 'status':
         state.busy = message.busy; state.connected = message.connected; state.selected = undefined;
         $('connectionStatus').textContent = message.message; renderBrowser(); break;
+      case 'cloneProgress':
+        if (message.scope && state.cloneScope && message.scope !== state.cloneScope) return;
+        state.cloneScope = message.scope || state.cloneScope || 'remote';
+        state.cloneBusy = true; state.cloneCanceling = state.cloneCanceling || message.canceling === true; state.cloneMessage = message.message;
+        state.clonePercent = Number.isFinite(message.percent) ? message.percent : undefined; renderBrowser(); renderLocalCloneControls(); renderCloneResult(); break;
+      case 'cloneComplete':
+        if (message.scope && state.cloneScope && message.scope !== state.cloneScope) return;
+        state.cloneBusy = false; state.cloneCanceling = false; state.cloneScope = undefined; state.clonePercent = undefined; state.cloneMessage = '';
+        state.cloneResult = message.result || { scope: message.scope || 'remote', state: 'success', message: message.message };
+        renderBrowser(); renderLocalCloneControls(); renderCloneResult(); break;
+      case 'cloneFailed':
+        if (message.scope && state.cloneScope && message.scope !== state.cloneScope) return;
+        state.cloneBusy = false; state.cloneCanceling = false; state.cloneScope = undefined; state.clonePercent = undefined; state.cloneMessage = '';
+        state.cloneResult = message.result || { scope: message.scope || 'remote', state: 'failed', message: message.message };
+        renderBrowser(); renderLocalCloneControls(); renderCloneResult(); break;
+      case 'cloneResult':
+        state.cloneResult = message.result || undefined; renderCloneResult(); break;
+      case 'cloneOperation':
+        if (!message.operation) {
+          state.cloneBusy = false; state.cloneCanceling = false; state.cloneScope = undefined; state.clonePercent = undefined; state.cloneMessage = '';
+          renderBrowser(); renderCloneResult();
+        }
+        break;
+      case 'localCloneParent':
+        state.localCloneParent = message.path; renderLocalCloneControls(); break;
       case 'error': showNotice(message.message, true); break;
       case 'notice': showNotice(message.message); break;
     }

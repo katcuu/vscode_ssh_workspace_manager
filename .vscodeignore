@@ -9,6 +9,9 @@
 !media/dashboard.html
 !media/dashboard.js
 !media/dashboard.css
+!media/git-askpass.cjs
+!media/git-askpass.sh
+!media/git-askpass.cmd
 !media/activity-bar.svg
 !media/icon.png
 !media/screenshots/*.png

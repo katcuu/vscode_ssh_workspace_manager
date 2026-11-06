@@ -2,6 +2,10 @@
 
 AI 或新开发者接手时，先阅读根目录 [AGENTS.md](AGENTS.md) 与 [开发交接手册](docs/AI-HANDOFF.zh-CN.md)。手册包含已确认需求、数据规则、代码定位、排错方式、测试覆盖和发布状态；早期调研保存在 `docs/archive/`，不作为当前功能依据。
 
+产品定位、主要使用场景和长期交互约束见 [PRODUCT.md](PRODUCT.md)。进行产品或界面设计前先读取；技术实现和验证状态仍以交接手册及当前代码为准。
+
+现有主题映射、排版、布局断点和组件状态记录在 [DESIGN.md](DESIGN.md)，可复用的组件预览见 [.impeccable/design.json](.impeccable/design.json)。设计文档记录当前实现；其中的主题变量需由 VS Code 宿主提供，不能把截图配色或预览色带固化为新的工作区主题。
+
 使用 Node.js 22 或更新版本：
 
 ```sh
@@ -23,12 +27,15 @@ VS Code 打开仓库后按 F5，启动独立扩展开发宿主。`npm run packag
 - `src/model.ts` / `store.ts`：数据校验、删除恢复和跨窗口持久化。
 - `src/sshConfig.ts` / `sshConfigWriter.ts`：OpenSSH 配置读取及确认后的追加写入。
 - `src/sftp.ts` / `trust.ts`：目录浏览、认证和主机密钥校验。
+- `src/gitClone.ts` / `localGitClone.ts`：仓库地址、Git 进度和认证提示，以及本机 Git 进程 / askpass 通道；远程 Git 命令由 `sftp.ts` 的 SSH 会话执行。
 - `media/`：Webview、活动栏矢量图标及 Marketplace PNG 图标。
 - `test/`：数据、配置与本地 SSH/SFTP 协议测试。
 - `scripts/vscode-smoke.cjs`：在真实 VS Code 扩展宿主检查激活、活动栏直接打开和单实例页面。
 - `docs/archive/`：早期调研与设计，不作为当前功能承诺，也不打入 VSIX。
 
 协议测试使用临时生成的密钥和本地临时 SSH 服务器，不依赖个人 SSH 配置。不要将真实配置、地址、私钥或凭据提交到仓库。
+
+`.agents/`、`.claude/`、`.codex/`、`.dsh/` 及 `.github/` 下安装的 AI 技能 / hooks 属于本地工具环境，已从 Git 忽略。产品与设计说明、`.impeccable/design.json` 属于项目文档，随源码维护，但不进入 VSIX。
 
 手工验收：点击活动栏图标应同时打开项目栏和右侧页面；本地 / 远程工作区自动记录并按来源去重；历史删除整条记录、收藏移除保留历史；四种列表均可搜索和打开；创建服务器后检查已有配置未被改写；验证密钥 / agent / 密码的远程浏览及 Remote SSH 两种窗口打开。
 
