@@ -1,6 +1,6 @@
 # SSH Workspace Manager 开发交接手册
 
-维护日期：2026-11-06。正式版本为 `0.2.2`，包含本机 / 远程 Git 克隆和管理页布局优化。`v0.2.2` 标签已通过三平台检查，GitHub Release 和 Marketplace OIDC 发布工作流均成功；公开 Marketplace 目录可能需要时间刷新。
+维护日期：2026-11-06。正式版本为 `0.2.2`，包含本机 / 远程 Git 克隆和管理页布局优化。`v0.2.2` 标签已通过三平台检查，GitHub Release 和 Marketplace OIDC 发布工作流均成功；Marketplace 官方查询接口确认版本状态为 `validated`。
 
 本手册用于让后续 AI 或开发者独立接手功能开发、定位问题和验证交付。入口规则见 [AGENTS.md](../AGENTS.md)，使用说明见 [README](../README.md)。具体行为和命令以当前源码、`package.json` 为准；修改实现时同步更新本文。
 
@@ -19,7 +19,7 @@
 | 版本与最低 API | 正式版 `0.2.2`；VS Code `^1.99.0` |
 | 平台 | macOS / Windows 客户端；Linux SSH 服务器 |
 | 本机交付 | `0.2.2` VSIX 已打包、校验并安装到隔离测试环境；另有真实本机 Git + OpenSSH 密码认证夹具验证 |
-| 市场 | [GitHub Release v0.2.2](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.2) 已发布 VSIX；[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42194835467) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
+| 市场 | [GitHub Release v0.2.2](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.2) 已发布 VSIX；Marketplace 官方查询接口确认 `0.2.2` 为 `validated`；[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42194835467) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
 | 自动验证 | Node.js 22.23.4 下类型检查、24 项测试、构建、打包通过；隔离 VS Code 1.139.0 扩展宿主 smoke 通过；v0.2.2 标签 CI 的 macOS / Windows / Ubuntu 检查全部通过 |
 
 市场状态是交接时的记录，不是实时查询结果。继续发布前，核对 [Marketplace](https://marketplace.visualstudio.com/items?itemName=katcuu.ssh-workspace-manager) 与 [发布者管理页](https://marketplace.visualstudio.com/manage/publishers/katcuu)。不要把 GitHub 推送、本机安装或用户看到旧市场版本误认为发布失败。
@@ -187,6 +187,7 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 - 隔离 VS Code 1.139.0 宿主通过扩展激活、活动栏直接打开、原生命令、四类侧栏入口和管理页单实例 smoke。另以本机临时 OpenSSH 服务验证 Git 密码 askpass、克隆检出内容及启动前取消；helper 路径含空格也通过。
 - 修复了浏览连接中断后克隆进度不结束、非英文 Git 输出解析，以及 OpenSSH 不接受含参数的 askpass 程序路径问题。密码仅经 IPC 传递，不落盘。
 - [v0.2.2 标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42194835467) 的 macOS / Windows / Ubuntu 检查、GitHub Release 和 Marketplace OIDC 发布任务全部成功；[GitHub Release](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.2) 已附上 VSIX。
+- Marketplace 官方扩展查询接口已返回 `0.2.2`，状态为 `validated`。详情页 HTML 暂时仍缓存 `0.2.1`，应以 Marketplace 查询接口的验证状态为准。
 - 尚未覆盖 Windows 实机 UI、真实 Linux SSH 服务器的完整认证 → 浏览 → 当前 / 新窗口打开回归，以及最低 VS Code 1.99 的实机体验。CI 不运行真实远程 SSH 或 VS Code UI；后续交付按变更选择检查，不将以前的结果记为本轮新跑过的结果。
 
 ### 需要真实宿主的手工回归
@@ -240,7 +241,7 @@ GitHub Release 正文由 `scripts/release-notes.mjs` 从 CHANGELOG 对应版本�
 
 Marketplace 自动发布已通过 Trusted Publishing 配置发布者 `katcuu`、仓库 `katcuu/vscode_ssh_workspace_manager` 和 workflow `ci.yml`；CI 使用 OIDC 发布，不需要 PAT 或仓库凭据。上传后 Marketplace 可能先显示 `Verifying`，公开目录版本更新会有延迟。
 
-发布时先更新 package.json、package-lock.json 和 CHANGELOG，推送 main 并确认 CI 成功，再推送匹配的版本 tag。不要只因文档变更就发布新版。VSIX 和私人截图不提交到仓库。`0.2.1` 于 2026-11-02 发布；`0.2.2` 于 2026-11-06 通过 `v0.2.2` 标签发布，GitHub Release 及 Marketplace OIDC 工作流均成功。后续版本仍需核对 GitHub Actions 和 Marketplace 当前状态。需要账号登录或协议确认时由用户在浏览器处理。
+发布时先更新 package.json、package-lock.json 和 CHANGELOG，推送 main 并确认 CI 成功，再推送匹配的版本 tag。不要只因文档变更就发布新版。VSIX 和私人截图不提交到仓库。`0.2.1` 于 2026-11-02 发布；`0.2.2` 于 2026-11-06 通过 `v0.2.2` 标签发布，GitHub Release 和 Marketplace 均成功，Marketplace 官方查询接口状态为 `validated`。后续版本仍需核对 GitHub Actions 和 Marketplace 当前状态。需要账号登录或协议确认时由用户在浏览器处理。
 
 ## 9. 后续任务如何交接
 
