@@ -1,6 +1,6 @@
 # SSH Workspace Manager 开发交接手册
 
-维护日期：2026-11-06。本次准备发布 `0.2.2`，包含本机 / 远程 Git 克隆和管理页布局优化；发布流程通过 `v0.2.2` 标签触发三平台检查、GitHub Release 和 Marketplace OIDC 上传。提交前最后确认的正式版本为 `v0.2.1`，本次发布结果需核对标签工作流和 Marketplace，不能根据本地版本号推断已发布。
+维护日期：2026-11-06。正式版本为 `0.2.2`，包含本机 / 远程 Git 克隆和管理页布局优化。`v0.2.2` 标签已通过三平台检查，GitHub Release 和 Marketplace OIDC 发布工作流均成功；公开 Marketplace 目录可能需要时间刷新。
 
 本手册用于让后续 AI 或开发者独立接手功能开发、定位问题和验证交付。入口规则见 [AGENTS.md](../AGENTS.md)，使用说明见 [README](../README.md)。具体行为和命令以当前源码、`package.json` 为准；修改实现时同步更新本文。
 
@@ -16,11 +16,11 @@
 | --- | --- |
 | 仓库 | [katcuu/vscode_ssh_workspace_manager](https://github.com/katcuu/vscode_ssh_workspace_manager) |
 | 扩展 / 发布者 | `katcuu.ssh-workspace-manager` / `katcuu`，MIT |
-| 版本与最低 API | 本地 `package.json` 为 `0.2.2`（未发布）；VS Code `^1.99.0` |
+| 版本与最低 API | 正式版 `0.2.2`；VS Code `^1.99.0` |
 | 平台 | macOS / Windows 客户端；Linux SSH 服务器 |
-| 本机交付 | 本地 `0.2.2` VSIX 已打包并安装到隔离测试环境；Windows 25H2 已实测独立 SFTP 认证回退 |
-| 市场 | 0.2.1 已发布；[tag 工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/41403671781) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
-| 自动验证 | Windows Node 22.23.4：类型检查、14 个测试、构建、VSIX 打包和 VS Code 1.143.1 隔离扩展宿主 smoke 通过；macOS Node 22 复核类型检查、14 个测试及构建通过；0.2.1 标签 CI 的 Windows / macOS / Ubuntu 矩阵全部通过 |
+| 本机交付 | `0.2.2` VSIX 已打包、校验并安装到隔离测试环境；另有真实本机 Git + OpenSSH 密码认证夹具验证 |
+| 市场 | [GitHub Release v0.2.2](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.2) 已发布 VSIX；[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42194835467) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
+| 自动验证 | Node.js 22.23.4 下类型检查、24 项测试、构建、打包通过；隔离 VS Code 1.139.0 扩展宿主 smoke 通过；v0.2.2 标签 CI 的 macOS / Windows / Ubuntu 检查全部通过 |
 
 市场状态是交接时的记录，不是实时查询结果。继续发布前，核对 [Marketplace](https://marketplace.visualstudio.com/items?itemName=katcuu.ssh-workspace-manager) 与 [发布者管理页](https://marketplace.visualstudio.com/manage/publishers/katcuu)。不要把 GitHub 推送、本机安装或用户看到旧市场版本误认为发布失败。
 
@@ -180,22 +180,14 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 
 0.2.0 的 11 个测试、类型检查、构建及打包已通过。VS Code 1.139.0 的隔离宿主 smoke 包括上述多根历史分支；macOS 中也检查了安装版本的入口、混合历史、搜索和取消收藏保留记录。
 
-### 最近验证（0.2.2，发布准备）
+### 最近验证（0.2.2，2026-11-06）
 
-- 2026-11-06：Node.js 22 下 `npm run check` 和 `npm test` 通过；自动测试 22 项全部通过。`npm run package` 的 prepublish 检查和构建通过，生成 `artifacts/ssh-workspace-manager-0.2.2.vsix`。
-- VSIX zip 校验通过，共 15 个文件；版本、`extensionKind: ["ui"]`、管理页主区域 / 远程浏览 / 本地克隆入口均存在，包内 HTML、CSS、JS 与当前源码一致。VS Code CLI 在独立 user-data / extensions 目录确认安装版本为 `katcuu.ssh-workspace-manager@0.2.2`；扩展宿主日志记录扩展已激活。
-- 用生产 HTML、CSS、JS 和模拟 VS Code 消息宿主检查管理页布局。验证 1440、1100、820、390px 宽度及 1024×600 短窗口；项目列表和浏览 / 克隆入口保持可见且页面无横向溢出。检查深色、浅色、高对比主题、长路径、搜索、收藏、目录选择 / 双击 / 上级、克隆进度跨视图保留、成功 / 失败 / 取消反馈和空记录状态。模拟宿主不执行真实 SSH、SFTP 或 Git 操作。
-- 2026-11-06：两套分栏都能用键盘调整；服务器和本地宽度分别保留，窄屏切换页面后回到宽屏仍恢复原比例。Node.js 22 下类型检查和 23 项测试通过；浏览器预览确认 1440px 双栏及 820px 单列无横向溢出。重新打包 0.2.2 VSIX，15 个文件的压缩包校验通过，包内管理页脚本与源码哈希一致。未完成真实 VS Code 扩展宿主的指针拖动验收。
-- 此前克隆功能布局优化那一轮没有修改 `media/dashboard.js`，保留了消息协议和列表操作逻辑。尝试使用 `scripts/vscode-smoke.cjs` 启动隔离宿主，但 VS Code 1.139.0 未生成 smoke 结果 JSON；那一轮未将真实宿主入口 / Webview UI smoke 记作通过，也未重新验证 Windows UI、真实 SSH 或公网克隆。
-- `0.2.2` VSIX 仅为本机测试文件。尚未提交、推送、创建 tag、创建 GitHub Release 或发布到 Marketplace；Marketplace 确认版本仍为 `0.2.1`。
-
-上述条目记录前几轮本机验收。正式发布准备补充：Node.js 22.23.4 下重新干净安装依赖；隔离的 VS Code 1.139.0 宿主通过激活、活动栏直接打开、原生命令、四类侧栏入口及管理页单实例 smoke。真实本机 Git + OpenSSH fixture 通过密码 askpass、检出内容与启动前取消。发布前修复断开浏览连接后克隆进度不结束、非英文 Git 输出解析，以及 OpenSSH 不接受含参数的 askpass 程序路径问题；后者改用 `media/git-askpass.sh` / `.cmd` 启动 `git-askpass.cjs`，凭据仍只经过 IPC，不落盘。三平台结果和最终发布状态在本次 tag 完成后更新。
-
-修复后本机 24 项自动测试全部通过，新增真实 OpenSSH 的启动脚本与 helper 路径含空格认证测试。最终 VSIX 包含 17 个文件，压缩包校验和包内运行时 / UI / askpass 与源码一致性通过，Unix 启动脚本保留可执行权限；该 VSIX 已安装到隔离扩展目录。Windows、Ubuntu 的相同检查由提交与标签 CI 验证。
-
-功能提交的 [CI run 41029849954](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/41029849954) 已成功，矩阵为 Ubuntu / macOS / Windows，Linux 额外生成 VSIX。CI 不运行真实 VS Code UI 或公网 Remote SSH。
-
-这不是对后续提交的保证。尚未覆盖 Windows 实机 UI、真实 Linux 服务器完整的认证 → 浏览 → 当前 / 新窗口打开回归，以及最低 VS Code 1.99 的实机体验。后续交付按变更选择检查，不将以前的结果记为本轮新跑过的结果。
+- Node.js 22.23.4 下重新安装依赖，`npm run check`、`npm test`（24 项）、构建及 `npm run package` 均通过。
+- 最终 VSIX 包含 17 个文件，压缩包校验通过；版本、`extensionKind: ["ui"]` 和包内 HTML / CSS / JS / askpass 文件与源码一致，Unix askpass 启动脚本保留可执行权限。VS Code CLI 在隔离扩展目录确认安装版本为 `katcuu.ssh-workspace-manager@0.2.2`。
+- 隔离 VS Code 1.139.0 宿主通过扩展激活、活动栏直接打开、原生命令、四类侧栏入口和管理页单实例 smoke。另以本机临时 OpenSSH 服务验证 Git 密码 askpass、克隆检出内容及启动前取消；helper 路径含空格也通过。
+- 修复了浏览连接中断后克隆进度不结束、非英文 Git 输出解析，以及 OpenSSH 不接受含参数的 askpass 程序路径问题。密码仅经 IPC 传递，不落盘。
+- [v0.2.2 标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42194835467) 的 macOS / Windows / Ubuntu 检查、GitHub Release 和 Marketplace OIDC 发布任务全部成功；[GitHub Release](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.2) 已附上 VSIX。
+- 尚未覆盖 Windows 实机 UI、真实 Linux SSH 服务器的完整认证 → 浏览 → 当前 / 新窗口打开回归，以及最低 VS Code 1.99 的实机体验。CI 不运行真实远程 SSH 或 VS Code UI；后续交付按变更选择检查，不将以前的结果记为本轮新跑过的结果。
 
 ### 需要真实宿主的手工回归
 
@@ -235,9 +227,6 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 - 错误映射现在能区分 DNS 失败、端口拒绝、连接 / 握手超时、认证失败和 SFTP 初始化错误。新增命令 **SSH Manager: 显示连接诊断** 打开输出面板。未知主机仍要求本次确认，known_hosts 中已变化的密钥仍拒绝。
 - 本机 Windows 闭环复现使用临时配置、临时密钥、空 / 不可达 agent 和本地 ssh2 SFTP 服务。默认 Windows pipe agent 不可达时，密钥和密码均成功；agent 返回空身份时也回退成功。Windows `ssh -G` 保留含中文和空格的配置 / 私钥路径。known_hosts 在这个隔离 fixture 中关闭以触发未知主机回调；主机变化拒绝、取消密码、缺失密钥、加密密钥、TCP 拒绝及错误诊断另由自动测试覆盖。
 - 本机当时已经开着一个 Remote - SSH 窗口；本轮保留该现场，没有先打开新远程连接或更改服务、配置和 known_hosts。故没有把当前真实主机误记为“此前从未 Remote - SSH 连接”。使用独立 Node 进程连接当前真实服务器，known_hosts 命中，agent 报错后私钥认证成功，SFTP 列出 34 个家目录子文件夹，全程未触发密码 / 口令 / 信任回调；此结果不依赖当前窗口的 `vscode.workspace.fs`。
-- 已安装版 VS Code 启动新宿主时被 `vscode-updating` 安装互斥锁阻止，日志报告正在更新并在约 30 秒后退出。未更改其安装或关闭用户窗口；改用同版本官方 Windows ZIP、独立 user-data 和 extensions 目录运行真实宿主 smoke，结果 JSON 确认激活、活动栏直接打开、侧栏命令 / 视图及单实例管理页通过。另一个隔离本地宿主确认实际加载路径为仓库根目录、扩展版本为 0.2.0。
-- Dashboard 点击验收受 Windows UI 自动化工具窗口绑定失败阻止，报错为 `window id … no longer belongs to Microsoft.VisualStudioCode; current owner is Microsoft.VisualStudioCode`。尚未覆盖：新建 / 已有别名的真实管理页首次浏览、原生信任 / 密码弹窗、双击目录、当前 / 新窗口打开，以及同一服务器远程窗口的 `workspace.fs` 浏览。协议测试回调通过不等于这些原生交互已通过。
-- 网络重试后 `git fetch origin main --tags` 成功；核对远端 `main` 与本地 HEAD 均为用户给出的 `4da33cd`。本轮不创建标签、不发布。
 
 连接错误可从命令面板运行 **SSH Manager: 显示连接诊断** 查看。日志采用结构化阶段事件，不开启 `ssh2` 的协议 debug（其可能包含认证数据）。
 
@@ -251,7 +240,7 @@ GitHub Release 正文由 `scripts/release-notes.mjs` 从 CHANGELOG 对应版本�
 
 Marketplace 自动发布已通过 Trusted Publishing 配置发布者 `katcuu`、仓库 `katcuu/vscode_ssh_workspace_manager` 和 workflow `ci.yml`；CI 使用 OIDC 发布，不需要 PAT 或仓库凭据。上传后 Marketplace 可能先显示 `Verifying`，公开目录版本更新会有延迟。
 
-发布时先更新 package.json、package-lock.json 和 CHANGELOG，推送 main 并确认 CI 成功，再推送匹配的版本 tag。不要只因文档变更就发布新版。VSIX 和私人截图不提交到仓库。`0.2.1` 已于 2026-11-02 通过 `v0.2.1` 标签发布，GitHub Release 与 Marketplace 均已确认；后续版本仍需核对 GitHub Actions 和 Marketplace 当前状态。需要账号登录或协议确认时由用户在浏览器处理。
+发布时先更新 package.json、package-lock.json 和 CHANGELOG，推送 main 并确认 CI 成功，再推送匹配的版本 tag。不要只因文档变更就发布新版。VSIX 和私人截图不提交到仓库。`0.2.1` 于 2026-11-02 发布；`0.2.2` 于 2026-11-06 通过 `v0.2.2` 标签发布，GitHub Release 及 Marketplace OIDC 工作流均成功。后续版本仍需核对 GitHub Actions 和 Marketplace 当前状态。需要账号登录或协议确认时由用户在浏览器处理。
 
 ## 9. 后续任务如何交接
 
