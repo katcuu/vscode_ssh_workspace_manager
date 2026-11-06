@@ -4,6 +4,28 @@
 
 适用于 **macOS / Windows 本机连接 Linux 服务器**。需要 Microsoft **Remote - SSH**、本机 OpenSSH；使用本地克隆时还需要本机 Git，使用远程克隆时 Linux 服务器需要 Git。
 
+## 功能预览
+
+以下截图展示主要使用场景，服务器、路径和项目名称均为演示数据。
+
+### 浏览远程项目
+
+![远程项目列表、SFTP 目录浏览与 Git 克隆](https://raw.githubusercontent.com/katcuu/vscode_ssh_workspace_manager/main/media/screenshots/remote-browsing.png)
+
+从服务器项目列表快速打开常用目录，也可以浏览远程文件夹、选择目标位置并克隆 Git 仓库。
+
+### 管理本地项目
+
+![本地项目列表与本机 Git 克隆](https://raw.githubusercontent.com/katcuu/vscode_ssh_workspace_manager/main/media/screenshots/local-projects.png)
+
+集中查看本地工作区，并将 Git 仓库克隆到本机后直接在当前窗口或新窗口打开。
+
+### 搜索历史项目
+
+![包含本地与 SSH 项目的历史记录列表](https://raw.githubusercontent.com/katcuu/vscode_ssh_workspace_manager/main/media/screenshots/project-history.png)
+
+在同一列表中搜索本地和各 SSH 服务器上实际打开过的项目，收藏、移除记录或选择窗口打开。
+
 ## 开始使用
 
 1. 安装本扩展，按提示安装 Microsoft **Remote - SSH**。
