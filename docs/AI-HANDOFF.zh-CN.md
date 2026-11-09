@@ -1,6 +1,6 @@
 # SSH Workspace Manager 开发交接手册
 
-维护日期：2026-11-09。当前源码准备发布 `0.2.3`，包含远程浏览失效路径恢复、实际文件夹删除及顶部提示关闭按钮；用户已确认本轮测试包通过，授权提交与正式发布。此前正式版 `0.2.2` 的 GitHub Release 和 Marketplace OIDC 发布成功，并经 Marketplace 官方查询确认 `validated`。本轮最终发布状态以本文新增的 `0.2.3` 验证记录为准。
+维护日期：2026-11-09。正式版 `0.2.3` 已发布，包含远程浏览失效路径恢复、实际文件夹删除及顶部提示关闭按钮。用户确认本轮测试包通过后，代码已提交并推送至 `main`，标签 `v0.2.3` 指向 `9573ab95ca48ec997ccf360cb9b5bf7d95ce5204`。三平台 CI、GitHub Release 和 Marketplace OIDC 发布均成功；Marketplace 官方查询确认 `0.2.3` 为 `validated`。具体证据见本文的 `0.2.3` 发布验证记录。
 
 本手册用于让后续 AI 或开发者独立接手功能开发、定位问题和验证交付。入口规则见 [AGENTS.md](../AGENTS.md)，使用说明见 [README](../README.md)。具体行为和命令以当前源码、`package.json` 为准；修改实现时同步更新本文。
 
@@ -16,11 +16,11 @@
 | --- | --- |
 | 仓库 | [katcuu/vscode_ssh_workspace_manager](https://github.com/katcuu/vscode_ssh_workspace_manager) |
 | 扩展 / 发布者 | `katcuu.ssh-workspace-manager` / `katcuu`，MIT |
-| 版本与最低 API | 源码待发版 `0.2.3`，此前正式版 `0.2.2`；VS Code `^1.99.0` |
+| 版本与最低 API | 正式版 `0.2.3`；VS Code `^1.99.0` |
 | 平台 | macOS / Windows 客户端；Linux SSH 服务器 |
-| 本机交付 | `0.2.2` VSIX 已打包、校验并安装到隔离测试环境；另有真实本机 Git + OpenSSH 密码认证夹具验证 |
-| 市场 | [GitHub Release v0.2.2](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.2) 已发布 VSIX；Marketplace 官方查询接口确认 `0.2.2` 为 `validated`；[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42194835467) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
-| 自动验证 | Node.js 22.23.4 下类型检查、24 项测试、构建、打包通过；隔离 VS Code 1.139.0 扩展宿主 smoke 通过；v0.2.2 标签 CI 的 macOS / Windows / Ubuntu 检查全部通过 |
+| 本机交付 | `0.2.3` VSIX 已打包并校验，隔离扩展宿主基础 smoke 通过；运行资源与用户确认的测试包一致 |
+| 市场 | [GitHub Release v0.2.3](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.3) 已发布 VSIX；Marketplace 官方查询接口确认 `0.2.3` 为 `validated`；[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42574215684) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
+| 自动验证 | Node.js 22.23.4 下类型检查、37 项测试、构建、打包通过；隔离 VS Code 1.139.0 扩展宿主 smoke 通过；v0.2.3 标签 CI 的 macOS / Windows / Ubuntu 检查全部通过 |
 
 市场状态是交接时的记录，不是实时查询结果。继续发布前，核对 [Marketplace](https://marketplace.visualstudio.com/items?itemName=katcuu.ssh-workspace-manager) 与 [发布者管理页](https://marketplace.visualstudio.com/manage/publishers/katcuu)。不要把 GitHub 推送、本机安装或用户看到旧市场版本误认为发布失败。
 
@@ -188,34 +188,37 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 
 0.2.0 的 11 个测试、类型检查、构建及打包已通过。VS Code 1.139.0 的隔离宿主 smoke 包括上述多根历史分支；macOS 中也检查了安装版本的入口、混合历史、搜索和取消收藏保留记录。
 
-### 远程浏览失效路径修复（2026-11-09，源码未发布）
+### 远程浏览失效路径修复（2026-11-09，开发阶段记录，现随 0.2.3 发布）
 
 - Node.js 22.23.4 下 `npm run check`、`npm test`（30 项）及 `npm run build` 通过。
 - 新增的控制层回归通过实际打包扩展 bundle、隔离 catalog、Remote SSH 文件系统 double 和 Webview 消息处理运行；覆盖目录被删除、路径变成普通文件、手动改路径、非法路径、权限错误、根目录不存在和取消竞争。
 - Dashboard 测试覆盖断开状态可编辑、从输入路径重新连接、读取失败后仍可修改，以及失败时不显示旧目录为可打开 / 可克隆目标。SFTP 协议测试确认 `NO_SUCH_FILE` 错误码保留供上层恢复，`ENOTDIR` 可识别，并且目录错误后会话仍可用。
-- 本次没有生成 VSIX、修改版本号、提交或发布；真实 VS Code 扩展宿主的 UI 验收未完成。
+- 此开发阶段未生成 VSIX、修改版本号、提交或发布，也未完成真实扩展宿主 UI 验收；后续测试和正式交付见下文。
 
-### 项目文件夹物理删除（2026-11-09，源码未发布）
+### 项目文件夹物理删除（2026-11-09，开发阶段记录，现随 0.2.3 发布）
 
 - 删除项目记录时由原生模态框提供“仅删除记录”与“删除文件夹并删除记录”两项；后者需再确认完整路径。递归删除期间显示 VS Code 通知进度。
 - 本机通过 `workspace.fs.delete({ recursive: true })` 删除；远程复用可用 SFTP 会话或按 SSH 配置建立后台会话，逐项 `lstat` / `readdir` / `unlink` / `rmdir`，不跟随符号链接。根目录禁止删除；路径缺失按幂等结果处理，文件替代目录及权限错误不会移除记录。
 - `npm run check`、`npm test`（37 项）及 `npm run build` 通过。覆盖仅删除记录、取消二次确认、本机递归删除、外部删除路径、普通文件替代目录、删除失败保留记录及远程 SFTP 递归与符号链接边界。
 - VS Code 1.139.0 隔离宿主基础 smoke 通过，覆盖激活、活动栏入口、服务器命令和管理页单实例；未触发删除确认，也未连接真实 SSH 服务器执行删除。
-- 本次删除功能尚未发布；交付前仍需检查真实宿主里的两次原生确认及本地 / Remote SSH 实际删除行为。
+- 此开发阶段尚未发布删除功能，未覆盖真实宿主里的两次原生确认及本地 / Remote SSH 实际删除行为；后续用户测试包确认和正式交付见下文，不将其计为自动化覆盖。
 
-### 顶部提示关闭与测试包交付（2026-11-09，未发布）
+### 顶部提示关闭与测试包交付（2026-11-09，开发阶段记录，现随 0.2.3 发布）
 
 - 普通结果与错误提示新增右侧关闭按钮，支持鼠标及键盘激活；关闭仅收起当前提示，后续新消息仍正常展示。长路径换行时按钮保持可见。
 - Node.js 22.23.4 下类型检查、37 项测试和构建通过。VS Code 1.139.0 隔离宿主基础 smoke 通过，并在真实 Webview 中检查了宽 / 窄布局、长路径、鼠标关闭、Enter 关闭、新提示重新出现及错误样式重置；未连接真实 SSH 服务器或执行实际文件夹删除。
 - 用户要求自测通过后自动生成并提供 VSIX，规则已同步至 `AGENTS.md`、`CONTRIBUTING.md` 及本文。测试包沿用 `0.2.2`；没有提交、打标签或上架。
 - 已运行 `npm run package`；测试包 `artifacts/ssh-workspace-manager-0.2.2.vsix` 为 571283 字节，ZIP 完整性、包内版本、UI 宿主声明及 HTML / CSS / JS / bundle 与当前源码一致性检查通过。SHA-256 为 `d2212a2878c804301e6a929b6647ce32c17ec17512598ff6775ccd656cf5f063`。
 
-### 0.2.3 发布验证（2026-11-09，待自动发布）
+### 0.2.3 发布验证（2026-11-09，正式发布完成）
 
 - 用户确认上述测试包通过，并授权提交、正式发版及上架 Marketplace；版本已更新为 `0.2.3`，发布说明由 `CHANGELOG.md` 的对应版本提取。
-- Node.js 22.23.4 下类型检查、37 项测试、构建与 `npm run package` 通过；本机正式版本 VSIX 为 571385 字节、20 个文件，ZIP 完整性、版本、`extensionKind: ["ui"]` 及包内运行资源一致性检查通过。SHA-256：`c425d1c120d25953702ecfc103f972b4730db1652d4c22fbd2cff0d3f93fef11`。
+- Node.js 22.23.4 下类型检查、37 项测试、构建与 `npm run package` 通过；发布前本机 VSIX 为 571385 字节、20 个文件，ZIP 完整性、版本、`extensionKind: ["ui"]` 及包内运行资源一致性检查通过。该次本机打包 SHA-256：`c425d1c120d25953702ecfc103f972b4730db1652d4c22fbd2cff0d3f93fef11`。
 - VS Code 1.139.0 隔离宿主 `0.2.3` 基础 smoke 通过，管理页实际渲染正常。提示鼠标 / 键盘与窄窗口交互的验证记录见上一小节；本次自动化复验未捕获 Webview 子框架，未把它记为再次通过。此次仅调整版本和文档，运行逻辑及界面资源与用户确认的测试包一致。
-- `main` 三平台 CI、`v0.2.3` 标签工作流、GitHub Release 与 Marketplace 验证结果将在实际完成后补充；推送代码或创建标签不代表市场发布已完成。
+- 发布提交 `9573ab95ca48ec997ccf360cb9b5bf7d95ce5204` 已推送至 `main`；[main CI](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42573095220) 的 macOS / Windows / Ubuntu 检查全部成功后，再推送指向该提交的附注标签 `v0.2.3`。
+- [v0.2.3 标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42574215684) 的三平台检查、GitHub Release 和 Marketplace OIDC 发布任务全部成功。发布日志明确返回 `Published katcuu.ssh-workspace-manager v0.2.3.`，没有跳过已有版本。
+- [GitHub Release](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.3) 为正式版本（非草稿、非预发布），已附上 CI 生成的 VSIX；发布说明与 `CHANGELOG.md` 对应版本一致。官方安装包为 571268 字节、20 个文件，SHA-256：`1f935567d4acdf78433d1ef2f791afe3e9871be9fd9981305bda6fd670dfefe2`；下载后核对 ZIP 完整性、版本、UI 宿主声明及运行资源 / 用户文档与源码一致。
+- Marketplace 官方扩展查询接口返回 `0.2.3`，状态为 `validated`，`lastUpdated` 为 `2026-11-09T06:47:07.787Z`；[商店页面](https://marketplace.visualstudio.com/items?itemName=katcuu.ssh-workspace-manager) 可安装或更新。交付安装包采用上述 GitHub Release 的 CI 产物。
 
 ### 最近验证（0.2.2，2026-11-06）
 
