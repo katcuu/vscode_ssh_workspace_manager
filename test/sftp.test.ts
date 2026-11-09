@@ -25,6 +25,9 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
   const attempts: string[] = [];
   const cloneCommands: string[] = [];
   const cloneInputs: string[] = [];
+  const deleteRoot = '/home/test/delete-me', deleteNested = `${deleteRoot}/nested`;
+  const deleteFile = `${deleteNested}/data.txt`, deleteLink = `${deleteRoot}/link`;
+  const removedPaths: string[] = [], lstatPaths: string[] = [];
   let ptyRequested = false;
   const { STATUS_CODE } = utils.sftp;
   const server = new Server({ hostKeys: [hostPrivateKey] }, connection => {
@@ -73,29 +76,49 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
       });
       sshSession.on('sftp', acceptSftp => {
         const sftp = acceptSftp();
-        const readHandles = new Set<number>(); let nextHandle = 1;
-        const directories = new Set(['/home/test', '/home/test/中文 code#%', '/home/test/link', '/home/test/.hidden']);
+        const readHandles = new Map<number, { path: string; read: boolean }>(); let nextHandle = 1;
+        const directories = new Set(['/home/test', '/home/test/中文 code#%', '/home/test/link', '/home/test/.hidden', deleteRoot, deleteNested]);
+        const deleteFiles = new Set([deleteFile]);
+        const deleteLinks = new Set([deleteLink]);
         const attrs = (mode = 0o40755) => ({ mode, uid: 1000, gid: 1000, size: 0, atime: 1, mtime: 1 });
         sftp.on('REALPATH', (id, value) => sftp.name(id, [{ filename: value === '.' ? '/home/test' : value, longname: '', attrs: attrs() }]));
         sftp.on('STAT', (id, value) => {
           if (directories.has(value)) sftp.attrs(id, attrs());
+          else if (value === '/home/test/source.ts') sftp.attrs(id, attrs(0o100644));
           else sftp.status(id, value.includes('denied') ? STATUS_CODE.PERMISSION_DENIED : STATUS_CODE.NO_SUCH_FILE);
+        });
+        sftp.on('LSTAT', (id, value) => {
+          lstatPaths.push(value);
+          if (directories.has(value)) sftp.attrs(id, attrs());
+          else if (deleteFiles.has(value) || value === '/home/test/source.ts') sftp.attrs(id, attrs(0o100644));
+          else if (deleteLinks.has(value)) sftp.attrs(id, attrs(0o120777));
+          else sftp.status(id, STATUS_CODE.NO_SUCH_FILE);
         });
         sftp.on('OPENDIR', (id, value) => {
           if (!directories.has(value)) { sftp.status(id, STATUS_CODE.NO_SUCH_FILE); return; }
-          const handle = Buffer.alloc(4); handle.writeUInt32BE(nextHandle++); sftp.handle(id, handle);
+          const index = nextHandle++;
+          const handle = Buffer.alloc(4); handle.writeUInt32BE(index); readHandles.set(index, { path: value, read: false }); sftp.handle(id, handle);
         });
         sftp.on('READDIR', (id, handle) => {
           const value = handle.readUInt32BE();
-          if (readHandles.has(value)) { sftp.status(id, STATUS_CODE.EOF); return; }
-          readHandles.add(value);
-          sftp.name(id, [
+          const openDirectory = readHandles.get(value);
+          if (!openDirectory || openDirectory.read) { sftp.status(id, STATUS_CODE.EOF); return; }
+          openDirectory.read = true;
+          const entries = openDirectory.path === '/home/test' ? [
             { filename: '中文 code#%', longname: '', attrs: attrs() },
             { filename: '.hidden', longname: '', attrs: attrs() },
             { filename: 'source.ts', longname: '', attrs: attrs(0o100644) },
             { filename: 'link', longname: '', attrs: attrs(0o120777) }
-          ]);
+          ] : openDirectory.path === deleteRoot ? [
+            { filename: 'nested', longname: '', attrs: attrs() },
+            { filename: 'link', longname: '', attrs: attrs(0o120777) }
+          ] : openDirectory.path === deleteNested ? [
+            { filename: 'data.txt', longname: '', attrs: attrs(0o100644) }
+          ] : [];
+          sftp.name(id, entries);
         });
+        sftp.on('REMOVE', (id, value) => { removedPaths.push(value); deleteFiles.delete(value); deleteLinks.delete(value); sftp.status(id, STATUS_CODE.OK); });
+        sftp.on('RMDIR', (id, value) => { removedPaths.push(value); directories.delete(value); sftp.status(id, STATUS_CODE.OK); });
         sftp.on('CLOSE', id => sftp.status(id, STATUS_CODE.OK));
       });
     }));
@@ -125,8 +148,23 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
   assert.equal(passwords, 0); assert.equal(trustPrompts, 0);
   assert.equal(entries.length, 3); assert.equal(entries.find(entry => entry.name === 'link')?.symlink, true);
   assert.ok(!entries.some(entry => entry.name === 'source.ts'));
-  await assert.rejects(() => session.listDirectories('/missing'), /不存在/);
+  await assert.rejects(() => session.listDirectories('/missing'), (error: Error & { cause?: { code?: number } }) => {
+    assert.match(error.message, /不存在/);
+    assert.equal(error.cause?.code, STATUS_CODE.NO_SUCH_FILE, 'missing path status remains available for browser recovery');
+    return true;
+  });
   await assert.rejects(() => session.listDirectories('/denied'), /权限/);
+  await assert.rejects(() => session.listDirectories('/home/test/source.ts'), { code: 'ENOTDIR' });
+  assert.equal(session.available, true, 'directory errors must not close an authenticated SSH connection');
+  assert.equal((await session.listDirectories('/home/test')).length, 3, 'the same session can browse another path after an error');
+  const deletionProgress: { deleted: number; path: string }[] = [];
+  assert.equal(await session.deleteDirectory('/home/test/delete-me', (deleted, currentPath) => deletionProgress.push({ deleted, path: currentPath })), 4);
+  assert.deepEqual(removedPaths, [deleteFile, deleteNested, deleteLink, deleteRoot]);
+  assert.deepEqual(deletionProgress.map(value => value.deleted), [1, 2, 3, 4]);
+  assert.ok(!lstatPaths.includes('/home/test/中文 code#%'), 'recursive deletion unlinks a symlink without traversing its target');
+  assert.equal(await session.deleteDirectory('/home/test/already-removed'), 0, 'a path deleted outside the extension is treated as an idempotent result');
+  await assert.rejects(() => session.deleteDirectory('/home/test/source.ts'), /已不是文件夹/);
+  await assert.rejects(() => session.deleteDirectory('/'), /不能删除根目录/);
   const cloneProgress: GitCloneProgress[] = [];
   const cloneInputsSeen: string[] = [];
   const repositoryPath = await session.cloneRepository('/home/test/中文 code#%', 'https://example.test/team/workspace.git', {

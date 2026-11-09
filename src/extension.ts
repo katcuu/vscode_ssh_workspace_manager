@@ -16,6 +16,25 @@ import { cloneLocalRepository } from './localGitClone';
 
 let manager: WorkspaceManager | undefined;
 
+function isMissingDirectory(error: unknown): boolean {
+  // SFTP keeps its numeric status in the cause; workspace.fs uses FileSystemError codes.
+  for (let depth = 0; depth < 5 && error && typeof error === 'object'; depth++) {
+    const detail = error as { code?: unknown; cause?: unknown };
+    if ([2, 'ENOENT', 'ENOTDIR', 'FileNotFound', 'FileNotADirectory'].includes(detail.code as string | number)) return true;
+    error = detail.cause;
+  }
+  return false;
+}
+
+function isMissingPath(error: unknown): boolean {
+  for (let depth = 0; depth < 5 && error && typeof error === 'object'; depth++) {
+    const detail = error as { code?: unknown; cause?: unknown };
+    if ([2, 'ENOENT', 'FileNotFound'].includes(detail.code as string | number)) return true;
+    error = detail.cause;
+  }
+  return false;
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   manager = new WorkspaceManager(context);
   context.subscriptions.push(manager,
@@ -53,6 +72,7 @@ class WorkspaceManager implements vscode.Disposable {
   private sessionAlias?: string;
   private connection?: AbortController;
   private cloneController?: AbortController;
+  private deletingFolderId?: string;
   private cloneSequence = 0;
   private cloneScope?: 'remote' | 'local';
   private cloneProgress?: { message: string; phase?: string; percent?: number; current?: number; total?: number; canceling?: boolean };
@@ -272,7 +292,7 @@ class WorkspaceManager implements vscode.Disposable {
     await this.snapshot();
     if (alias && this.cloneResult?.scope === 'remote' && this.cloneResult.state === 'success'
       && this.cloneResult.alias === alias && this.sessionAlias === alias && this.session?.available) {
-      await this.list(alias, this.cloneResult.path || this.lastBrowsePath || '/');
+      await this.list(alias, this.lastBrowsePath || this.cloneResult.path || '/', true);
     }
   }
 
@@ -333,7 +353,7 @@ class WorkspaceManager implements vscode.Disposable {
       case 'connect': {
         const alias = this.requireAlias(message.alias);
         if (alias !== this.selectedAlias) throw new Error('服务器已切换，请重新连接。');
-        await this.connectAndBrowse(alias); return;
+        await this.connectAndBrowse(alias, typeof message.path === 'string' ? message.path : undefined); return;
       }
       case 'cancel':
         this.cloneController?.abort();
@@ -345,6 +365,7 @@ class WorkspaceManager implements vscode.Disposable {
         if (alias !== this.selectedAlias || typeof message.path !== 'string' || typeof message.url !== 'string') {
           throw new Error('请先选择服务器目录并输入 Git 仓库地址。');
         }
+        if (this.deletingFolderId) throw new Error('文件夹删除完成前不能开始远程克隆。');
         await this.cloneRepository(alias, normalizeRemotePath(message.path), message.url); return;
       }
       case 'selectLocalCloneParent': {
@@ -380,7 +401,7 @@ class WorkspaceManager implements vscode.Disposable {
       case 'browse': {
         const alias = this.requireAlias(message.alias);
         if (alias !== this.selectedAlias) return;
-        await this.list(alias, normalizeRemotePath(message.path)); return;
+        await this.list(alias, message.path); return;
       }
       case 'saveFolder': {
         const alias = this.requireAlias(message.alias);
@@ -403,12 +424,7 @@ class WorkspaceManager implements vscode.Disposable {
       }
       case 'remove': {
         if (typeof message.id !== 'string') return;
-        await this.store.update(data => {
-          data.folders = data.folders.filter(folder => folder.id !== message.id);
-        });
-        await this.snapshot();
-        this.post({ type: 'notice', message: '已删除此文件夹的收藏和历史记录，实际文件保留。再次打开后会重新记录。' });
-        return;
+        await this.removeFolderRecord(message.id); return;
       }
       case 'favorite': case 'rename': {
         if (typeof message.id !== 'string') return;
@@ -516,6 +532,86 @@ class WorkspaceManager implements vscode.Disposable {
     if (signal.aborted) token.cancel();
     try { return await vscode.window.showInputBox({ title, prompt, password: true, ignoreFocusOut: true }, token.token); }
     finally { signal.removeEventListener('abort', cancel); token.dispose(); }
+  }
+
+  private async removeFolderRecord(id: string): Promise<void> {
+    if (this.deletingFolderId) throw new Error('已有文件夹删除任务正在进行。');
+    const data = await this.store.read();
+    const folder = data.folders.find(value => value.id === id);
+    if (!folder) throw new Error('这条项目记录已被移除，请刷新列表。');
+    const location = folder.kind === 'remote' ? `${folder.alias} · 远程服务器` : '本机';
+    const choice = await vscode.window.showWarningMessage(`如何处理“${folder.name}”？`, { modal: true,
+      detail: `${location}\n${folder.path}\n\n仅删除记录不会改动实际文件。删除文件夹会递归删除其中全部内容。`
+    }, '仅删除记录', '删除文件夹并删除记录');
+    if (choice === '仅删除记录') {
+      await this.store.update(latest => { latest.folders = latest.folders.filter(value => value.id !== id); });
+      this.watchStore(); await this.snapshot();
+      this.post({ type: 'notice', message: '已删除项目记录，实际文件保留。' });
+      return;
+    }
+    if (choice !== '删除文件夹并删除记录') return;
+
+    if (folder.kind === 'remote' && folder.path === '/') throw new Error('为保护服务器，不能删除根目录 /。');
+    if (folder.kind === 'local' && path.parse(folder.path).root === folder.path) {
+      throw new Error(`为保护本机文件，不能删除磁盘根目录：${folder.path}`);
+    }
+    if (this.cloneController) throw new Error('请先等当前 Git 克隆任务结束，再删除文件夹。');
+
+    const confirmation = await vscode.window.showWarningMessage('确认永久删除这个文件夹及其中的全部内容？', { modal: true,
+      detail: `完整路径：\n${folder.path}\n\n来源：${location}\n此操作无法撤销。`
+    }, '确认删除文件夹');
+    if (confirmation !== '确认删除文件夹') return;
+
+    const latest = (await this.store.read()).folders.find(value => value.id === id);
+    if (!latest || latest.kind !== folder.kind || latest.path !== folder.path) {
+      throw new Error('项目记录在确认期间已变化，未删除文件夹。请刷新后重试。');
+    }
+    if (this.deletingFolderId) throw new Error('已有文件夹删除任务正在进行。');
+    this.deletingFolderId = id;
+    try {
+      const folderExisted = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
+        title: folder.kind === 'local' ? '正在删除本机文件夹' : `正在删除 ${folder.alias} 上的文件夹`, cancellable: false
+      }, async progress => {
+        progress.report({ message: folder.path });
+        return this.deletePhysicalFolder(folder, progress);
+      });
+      await this.store.update(current => { current.folders = current.folders.filter(value => value.id !== id); });
+      this.watchStore(); await this.snapshot();
+      this.post({ type: 'notice', message: folderExisted
+        ? `已删除文件夹及其项目记录：${folder.path}` : `文件夹已不存在，已移除对应项目记录：${folder.path}` });
+    } finally {
+      this.deletingFolderId = undefined;
+    }
+  }
+
+  private async deletePhysicalFolder(folder: FolderTarget, progress: vscode.Progress<{ message?: string }>): Promise<boolean> {
+    if (folder.kind === 'local') {
+      const uri = vscode.Uri.file(folder.path);
+      let stat: vscode.FileStat;
+      try { stat = await vscode.workspace.fs.stat(uri); }
+      catch (error) { if (isMissingPath(error)) return false; throw error; }
+      if (!(stat.type & vscode.FileType.Directory)) {
+        throw new Error(`此路径已不是文件夹，未删除实际文件：${folder.path}`);
+      }
+      try { await vscode.workspace.fs.delete(uri, { recursive: true }); }
+      catch (error) { if (isMissingPath(error)) return false; throw error; }
+      return true;
+    }
+
+    let session = this.sessionAlias === folder.alias ? this.session : undefined;
+    let ownedSession = false;
+    if (!session?.available) {
+      session = await this.openSftpSession(folder.alias, new AbortController().signal, this.generation);
+      ownedSession = true;
+    }
+    try {
+      const deleted = await session.deleteDirectory(folder.path, (count, currentPath) => {
+        progress.report({ message: `${count} 项已删除 · ${currentPath}` });
+      });
+      return deleted > 0;
+    } finally {
+      if (ownedSession) session.close();
+    }
   }
 
   private async openSftpSession(alias: string, signal: AbortSignal, generation: number): Promise<SftpSession> {
@@ -681,12 +777,13 @@ class WorkspaceManager implements vscode.Disposable {
     }
   }
 
-  private async connectAndBrowse(alias: string): Promise<void> {
+  private async connectAndBrowse(alias: string, requestedPath?: string): Promise<void> {
     this.disconnect(); this.selectedAlias = alias;
     const generation = this.generation;
     const controller = this.connection = new AbortController();
     this.post({ type: 'status', message: '正在尝试密钥 / SSH agent…', busy: true, connected: false });
     try {
+      const explicitPath = requestedPath ? normalizeRemotePath(requestedPath) : undefined;
       const current = this.currentRemote();
       if (current?.alias !== alias) {
         const session = await this.openSftpSession(alias, controller.signal, generation);
@@ -694,10 +791,10 @@ class WorkspaceManager implements vscode.Disposable {
         this.session = session;
         this.sessionAlias = alias;
       }
-      let initialPath = this.lastBrowsePath;
+      let initialPath = explicitPath || this.lastBrowsePath;
       if (!initialPath) initialPath = current?.alias === alias ? current.path : await this.session!.homeDirectory();
       if (generation !== this.generation) return;
-      await this.list(alias, initialPath);
+      await this.list(alias, initialPath, !explicitPath || explicitPath === this.lastBrowsePath);
     } catch (error) {
       if (generation !== this.generation) return;
       this.disconnect(); this.report(error);
@@ -710,41 +807,52 @@ class WorkspaceManager implements vscode.Disposable {
     if (current?.alias === alias) {
       const uri = vscode.Uri.from({ scheme: 'vscode-remote', authority: current.authority, path: remotePath });
       const stat = await vscode.workspace.fs.stat(uri);
-      if (!(stat.type & vscode.FileType.Directory)) throw new Error('该路径不是文件夹。');
+      if (!(stat.type & vscode.FileType.Directory)) throw vscode.FileSystemError.FileNotADirectory(uri);
     } else if (this.sessionAlias !== alias || !this.session?.available || !await this.session.isDirectory(remotePath)) {
       throw new Error('目录已失效或后台浏览已断开，请刷新或重新连接。');
     }
   }
 
-  private async list(alias: string, remotePath: string): Promise<void> {
+  private async readDirectory(alias: string, remotePath: string): Promise<{ entries: RemoteEntry[]; backend: string }> {
+    const current = this.currentRemote();
+    if (current?.alias === alias) {
+      await this.verifyDirectory(alias, remotePath);
+      const uri = vscode.Uri.from({ scheme: 'vscode-remote', authority: current.authority, path: remotePath });
+      const entries = (await vscode.workspace.fs.readDirectory(uri)).filter(([name, type]) => (type & vscode.FileType.Directory) !== 0 && !/[\x00-\x1f\x7f/]/.test(name))
+        .map(([name, type]) => ({ name, path: path.posix.join(remotePath, name), symlink: !!(type & vscode.FileType.SymbolicLink) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return { entries, backend: '当前 Remote SSH 连接' };
+    }
+    if (this.sessionAlias !== alias || !this.session?.available) throw new Error('请先连接此服务器。');
+    return { entries: await this.session.listDirectories(remotePath), backend: 'SFTP 后台浏览' };
+  }
+
+  private async list(alias: string, remotePath: unknown, recoverMissing = false): Promise<void> {
     const generation = this.generation, sequence = ++this.requestSequence;
-    const normalized = normalizeRemotePath(remotePath);
     this.post({ type: 'status', message: '正在读取目录…', busy: true, connected: true });
     try {
-      const current = this.currentRemote();
-      let entries: RemoteEntry[], backend: string;
-      if (current?.alias === alias) {
-        await this.verifyDirectory(alias, normalized);
-        const uri = vscode.Uri.from({ scheme: 'vscode-remote', authority: current.authority, path: normalized });
-        entries = (await vscode.workspace.fs.readDirectory(uri)).filter(([name, type]) => (type & vscode.FileType.Directory) !== 0 && !/[\x00-\x1f\x7f/]/.test(name))
-          .map(([name, type]) => ({ name, path: path.posix.join(normalized, name), symlink: !!(type & vscode.FileType.SymbolicLink) }))
-          .sort((a, b) => a.name.localeCompare(b.name));
-        backend = '当前 Remote SSH 连接';
-      } else {
-        if (this.sessionAlias !== alias || !this.session?.available) throw new Error('请先连接此服务器。');
-        entries = await this.session.listDirectories(normalized);
-        backend = 'SFTP 后台浏览';
+      const requested = normalizeRemotePath(remotePath);
+      let normalized = requested, result: { entries: RemoteEntry[]; backend: string };
+      while (true) {
+        try { result = await this.readDirectory(alias, normalized); break; }
+        catch (error) {
+          if (generation !== this.generation || sequence !== this.requestSequence || alias !== this.selectedAlias) return;
+          if (!recoverMissing || !isMissingDirectory(error) || normalized === '/') throw error;
+          normalized = path.posix.dirname(normalized);
+          this.post({ type: 'status', message: `上次浏览目录已失效，正在读取上级目录 ${normalized}…`, busy: true, connected: true });
+        }
       }
       if (generation !== this.generation || sequence !== this.requestSequence || alias !== this.selectedAlias) return;
       this.lastBrowsePath = normalized;
       await this.store.update(data => { data.browsePaths[alias] = normalized; });
       this.watchStore();
       if (generation !== this.generation || sequence !== this.requestSequence) return;
-      this.post({ type: 'browseResult', alias, path: normalized, entries, backend });
+      this.post({ type: 'browseResult', alias, path: normalized, ...result });
+      if (normalized !== requested) this.post({ type: 'notice', message: `上次浏览的路径 ${requested} 已不存在或不再是文件夹，已切换到 ${normalized}。` });
     } catch (error) {
       if (generation !== this.generation || sequence !== this.requestSequence) return;
       this.report(error);
-      this.post({ type: 'status', message: '目录读取失败；保留上次浏览位置。', busy: false,
+      this.post({ type: 'status', message: '目录读取失败；可修改路径后点击「前往」，或重新连接。', busy: false,
         connected: this.currentRemote()?.alias === alias || (this.sessionAlias === alias && !!this.session?.available) });
     }
   }

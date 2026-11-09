@@ -25,7 +25,10 @@
       <button id="openCloneNew" class="primary" hidden>新窗口打开</button>
     </div>
   </section>
-  <p id="notice" role="status" hidden></p>
+  <div id="notice" hidden>
+    <span id="noticeMessage" role="status" aria-live="polite"></span>
+    <button id="dismissNotice" type="button" aria-label="关闭提示" title="关闭">×</button>
+  </div>
     <main id="main">
       <section id="saved" class="saved">
         <div class="section-heading"><div><h2 id="folderTitle">已保存的文件夹</h2><p id="folderCount" class="muted"></p></div><button id="addFolder" hidden></button></div>
@@ -48,7 +51,7 @@
       <section id="browser" class="browser" hidden>
         <div class="section-heading"><div><h2>打开新文件夹</h2><p id="browseServer" class="muted">先选择一台服务器</p></div><div class="actions"><button id="connect" class="primary">连接并浏览</button><button id="disconnect">取消 / 断开</button></div></div>
         <p id="connectionStatus" role="status" class="connection">未连接</p>
-        <div class="pathbar"><button id="up" aria-label="上一级">↑</button><input id="path" placeholder="连接后显示远程路径；或输入 /home/user/projects" aria-label="远程绝对路径"><button id="go">前往</button><button id="refresh">刷新</button></div>
+        <div class="pathbar"><button id="up" aria-label="上一级">↑</button><input id="path" placeholder="输入远程绝对路径；连接前也可修改，留空使用默认目录" aria-label="远程绝对路径"><button id="go">前往</button><button id="refresh">刷新</button></div>
         <div class="browse-options"><nav id="breadcrumbs" aria-label="路径导航"></nav><label><input id="showHidden" type="checkbox"> 隐藏目录</label></div>
         <div id="directories" class="directories" aria-label="远程文件夹列表"><p class="empty">连接后在这里浏览服务端文件夹。单击选中，双击进入。</p></div>
         <div class="open-target"><span class="muted">将打开</span><code id="target">—</code><div class="actions"><button id="saveTarget">☆ 收藏</button><button id="openCurrent">当前窗口打开</button><button id="openNew" class="primary">新窗口打开</button></div></div>

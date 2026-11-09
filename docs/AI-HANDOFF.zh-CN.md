@@ -1,6 +1,6 @@
 # SSH Workspace Manager 开发交接手册
 
-维护日期：2026-11-06。正式版本为 `0.2.2`，包含本机 / 远程 Git 克隆和管理页布局优化。`v0.2.2` 标签已通过三平台检查，GitHub Release 和 Marketplace OIDC 发布工作流均成功；Marketplace 官方查询接口确认版本状态为 `validated`。
+维护日期：2026-11-09。当前源码准备发布 `0.2.3`，包含远程浏览失效路径恢复、实际文件夹删除及顶部提示关闭按钮；用户已确认本轮测试包通过，授权提交与正式发布。此前正式版 `0.2.2` 的 GitHub Release 和 Marketplace OIDC 发布成功，并经 Marketplace 官方查询确认 `validated`。本轮最终发布状态以本文新增的 `0.2.3` 验证记录为准。
 
 本手册用于让后续 AI 或开发者独立接手功能开发、定位问题和验证交付。入口规则见 [AGENTS.md](../AGENTS.md)，使用说明见 [README](../README.md)。具体行为和命令以当前源码、`package.json` 为准；修改实现时同步更新本文。
 
@@ -16,7 +16,7 @@
 | --- | --- |
 | 仓库 | [katcuu/vscode_ssh_workspace_manager](https://github.com/katcuu/vscode_ssh_workspace_manager) |
 | 扩展 / 发布者 | `katcuu.ssh-workspace-manager` / `katcuu`，MIT |
-| 版本与最低 API | 正式版 `0.2.2`；VS Code `^1.99.0` |
+| 版本与最低 API | 源码待发版 `0.2.3`，此前正式版 `0.2.2`；VS Code `^1.99.0` |
 | 平台 | macOS / Windows 客户端；Linux SSH 服务器 |
 | 本机交付 | `0.2.2` VSIX 已打包、校验并安装到隔离测试环境；另有真实本机 Git + OpenSSH 密码认证夹具验证 |
 | 市场 | [GitHub Release v0.2.2](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.2) 已发布 VSIX；Marketplace 官方查询接口确认 `0.2.2` 为 `validated`；[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42194835467) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
@@ -49,8 +49,9 @@
 - 同一位置重复打开只更新一条记录的时间，保留收藏和自定义显示名称。不同 SSH 别名下的相同路径属于不同位置。
 - 只添加、浏览或收藏目录不产生打开历史；取消连接或打开失败也不能提前写入历史。
 - 关闭 `sshWorkspaceManager.recordFolders` 后停止自动记录；“记录当前工作区文件夹”命令仍可手动记录。
-- 历史或普通列表的“删除记录”删除整个项目元数据，收藏一起移除。收藏列表的“取消收藏”只改收藏状态，保留原记录及已有历史。
-- “重命名”只改显示名称；“删除记录”只改本机元数据，均不操作实际文件。删除后再次实际打开会重新记录。
+- 历史或普通列表的“删除记录”先让用户选择“仅删除记录”或“删除文件夹并删除记录”；收藏列表的“取消收藏”只改收藏状态，保留原记录及已有历史。
+- 删除实际文件夹须再次确认并在模态框中显示完整路径。文件系统操作成功后才移除记录；路径已不存在时提示后移除旧记录，路径变成普通文件、权限不足或其他删除失败时保留记录。递归删除不跟随远程符号链接，且禁止删除本机盘符根目录和远程 `/`。
+- “重命名”只改显示名称；选择“仅删除记录”只改本机元数据。再次实际打开已移除的目录后会重新记录。
 - 删除服务器只将别名写入隐藏列表；刷新仍保持隐藏，已有 SSH 配置及项目保留，可从导入入口恢复。全局历史和收藏仍可打开它的项目。
 - 每条记录支持当前窗口和新窗口打开。本地项目从远程窗口操作时仍打开本机工作区；远程项目交给 Remote SSH。
 
@@ -85,7 +86,7 @@ SSH 仓库优先使用 Linux 服务器的 key / agent；加密 key 的口令或 
 | `src/store.ts` | `CatalogStore.read/update`；跨窗口文件锁、重新读取、事务写入 |
 | `src/sshConfig.ts` | Host / Include 枚举、`ssh -G` 解析、受支持配置映射 |
 | `src/sshConfigWriter.ts` | 新服务器参数校验、加锁追加 Host，不重写已有配置 |
-| `src/sftp.ts` / `src/trust.ts` | `ssh2` 认证、SFTP 浏览、Git exec 通道、取消、known_hosts 与指纹 |
+| `src/sftp.ts` / `src/trust.ts` | `ssh2` 认证、SFTP 浏览 / 不跟随符号链接的递归删除、Git exec 通道、取消、known_hosts 与指纹 |
 | `src/gitClone.ts` | Git URL / 目标名校验、远程命令转义、HTTPS / SSH 提示识别、进度解析 |
 | `src/localGitClone.ts` / `media/git-askpass.cjs` | 本机 `git clone`、SSH askpass 凭据桥、Windows named pipe / Unix socket、进度、取消与脱敏错误 |
 | `media/dashboard.html/js/css` | 页面结构、列表筛选排序、消息交互、主题和长路径换行 |
@@ -97,6 +98,8 @@ SSH 仓库优先使用 Linux 服务器的 key / agent；加密 key 的口令或 
 目录元数据变更经 Store 写入后，当前窗口更新快照；其他窗口通过目录级 `fs.watch`、300ms 防抖和重新聚焦刷新看到新数据。快照序号避免较早的异步读取覆盖新状态。原生侧栏仅在服务器列表发生变化时重建，避免频繁刷新导致选择不稳定。
 
 页面 `ready` 请求 `snapshot`。列表打开消息只传记录 ID 与 `mode: "current" | "new"`；扩展从最新 Store 查回合法记录再构造 URI。浏览器中的打开还需校验当前服务器和目录。修改交互时同时检查 `handleMessage()`、前端 `send()` / 消息监听及相应测试，不只改按钮文字。
+
+顶部普通结果 / 错误提示使用 `notice` 容器、独立的 `noticeMessage` 文本及 `dismissNotice` 关闭按钮。消息通过 `textContent` 更新文本节点，不能覆盖容器并移除按钮。关闭只在 Webview 收起当前提示，不发送扩展消息、不修改记录；下一条 `notice` / `error` 仍会显示。克隆结果保留原有独立关闭与消息处理。
 
 打开使用 `vscode.openFolder`：本地通过 `Uri.file()` 和 `forceLocalWindow`，远程通过 `Uri.from({ scheme: "vscode-remote", authority, path })`。不要拼接未转义 URI，否则中文、空格、`#`、`%` 会出问题。新位置由目标窗口实际观察工作区后记历史；若目标已在当前工作区，打开前更新对应根目录，补足宿主未重新激活的情况。
 
@@ -143,6 +146,8 @@ known_hosts 支持明文 / 哈希主机和非默认端口。未知指纹由用�
 
 SFTP 请求超时为 20 秒，连接握手允许 120 秒（包括等待用户输入），会话空闲约 5 分钟关闭。浏览失效后提示重连，不能据此删除已保存项目。目录符号链接需额外 stat，并发上限为 4。
 
+远程浏览恢复规则：Webview 的路径栏在断开或连接失败后仍可编辑；“前往”在未连接时会携带当前路径新建后台连接，连接按钮也传递路径栏值。若恢复默认的 `browsePaths[alias]`，或用户明确提交的路径与已保存路径相同，且该目录因不存在 / 已变成文件而失败，则依次尝试 POSIX 上级目录直到首个可读目录，更新 `browsePaths` 与内存 `lastBrowsePath` 并提示实际落点。只对 missing / not-a-directory 错误回退；权限、网络和 SFTP 错误不改变保存位置，供用户修正后重试。手动输入的不同路径失败时不自动跳到其他目录。新目录读取开始即清空旧列表和目标，失败后禁用打开、收藏和克隆，避免旧目标冒充新目录。连接取消通过 `generation` / `requestSequence` 抛弃延迟结果，不能在取消后写入新的浏览位置。
+
 ## 6. 开发、调试和验证
 
 使用 Node.js 22，与三平台 CI 一致；运行时代码由 esbuild 以 Node 20 为目标打包。锁文件纳入版本控制，首次安装用 `npm ci`。
@@ -157,6 +162,8 @@ npm run package
 
 `npm run check` 是 `tsc --noEmit`。`npm test` 通过 tsx 执行 Node 测试。`npm run package` 通过 vsce 的 prepublish 流程重新检查和构建，生成 `artifacts/ssh-workspace-manager-<version>.vsix`。`dist/extension.js`、source map 和第三方许可证由构建生成，不直接编辑。增加运行时依赖时同步检查构建脚本里的许可证清单。
 
+默认交付规则（2026-11-09 用户确认）：每轮修改在适用自测通过后，自动打包 VSIX 并检查压缩完整性、版本和包内资源，再提供绝对路径链接供用户测试，无需再次请求打包指令。未要求发布时沿用当前版本号，不自动安装、提交、打标签或上架；安装包保存在被 Git 忽略的 `artifacts/`。
+
 VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发宿主；预启动任务会 build，但不是持续监听，改 TypeScript 后需重新构建并重启 / 重新加载宿主。远程打开验收需要在该测试环境安装 Remote - SSH。开发宿主和已安装的正式扩展不是同一个运行实例，核对实际扩展 ID 和版本。
 
 ### 自动测试各自证明什么
@@ -164,7 +171,8 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 | 检查 | 覆盖范围 | 未覆盖 |
 | --- | --- | --- |
 | `test/core.test.ts`，8 个测试 | 本地 / 远程路径与 ID、去重、schema 迁移、Host / Include、known_hosts、并发存储与损坏保护、隐藏恢复、SSH 配置追加 | 原生 UI、真实公网连接 |
-| `test/dashboard.test.ts`，5 个测试 | 执行实际 dashboard.js，检查列表、排序、来源搜索、打开 ID 消息、删除 / 取消收藏区别、分栏比例、克隆状态跨视图恢复、路径和当前 / 新窗口打开消息 | DOM 替身不能验证真实排版、点击焦点或 VS Code 窗口 |
+| `test/dashboard.test.ts`，6 个测试 | 执行实际 dashboard.js，检查列表、排序、来源搜索、打开 ID 消息、删除 / 取消收藏区别、分栏比例、克隆状态跨视图恢复、路径和当前 / 新窗口打开消息、失效路径后的重连和恢复交互 | DOM 替身不能验证真实排版、点击焦点或 VS Code 窗口 |
+| `test/browsing.test.ts`，12 个测试 | 通过 VS Code API double 运行实际扩展 bundle 和 Webview 消息处理，验证失效路径恢复、取消竞争、仅删除记录、本机递归删除、取消二次确认、路径已被外部删除、文件替代目录、删除失败保留记录及根目录保护 | 不启动 VS Code UI，也不执行真实 SFTP；真实 SFTP 错误由协议测试覆盖 |
 | `test/gitClone.test.ts`，4 个测试 | SSH / HTTPS URL、凭据拒绝、目标名和 shell 转义、认证提示与 Git 进度解析 | 不连接公网 Git 服务 |
 | `test/localGitClone.test.ts`，3 个测试 | 通过本机 IPC endpoint 启动 askpass helper，检查秘密输入传输、取消响应和 Unix socket 清理；真实 OpenSSH 通过带空格的启动脚本 / helper 路径完成本地 SSH fixture 的密码认证 | 不连接公网 Git 服务，也不验证 Windows UI / 用户本机 agent |
 | `test/sftp.test.ts`，4 个测试 | 临时密钥和本地 SSH/SFTP 服务，验证公钥优先、密码回退、agent 不可用 / 空身份时继续回退、未知主机信任、变化主机密钥拒绝、加密 / 缺失密钥、目录 / 符号链接、错误与取消、诊断脱敏 | 用户实际 agent、跳板机、多因素认证、真实服务器环境 |
@@ -179,6 +187,35 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 ### 交接基线的验证证据
 
 0.2.0 的 11 个测试、类型检查、构建及打包已通过。VS Code 1.139.0 的隔离宿主 smoke 包括上述多根历史分支；macOS 中也检查了安装版本的入口、混合历史、搜索和取消收藏保留记录。
+
+### 远程浏览失效路径修复（2026-11-09，源码未发布）
+
+- Node.js 22.23.4 下 `npm run check`、`npm test`（30 项）及 `npm run build` 通过。
+- 新增的控制层回归通过实际打包扩展 bundle、隔离 catalog、Remote SSH 文件系统 double 和 Webview 消息处理运行；覆盖目录被删除、路径变成普通文件、手动改路径、非法路径、权限错误、根目录不存在和取消竞争。
+- Dashboard 测试覆盖断开状态可编辑、从输入路径重新连接、读取失败后仍可修改，以及失败时不显示旧目录为可打开 / 可克隆目标。SFTP 协议测试确认 `NO_SUCH_FILE` 错误码保留供上层恢复，`ENOTDIR` 可识别，并且目录错误后会话仍可用。
+- 本次没有生成 VSIX、修改版本号、提交或发布；真实 VS Code 扩展宿主的 UI 验收未完成。
+
+### 项目文件夹物理删除（2026-11-09，源码未发布）
+
+- 删除项目记录时由原生模态框提供“仅删除记录”与“删除文件夹并删除记录”两项；后者需再确认完整路径。递归删除期间显示 VS Code 通知进度。
+- 本机通过 `workspace.fs.delete({ recursive: true })` 删除；远程复用可用 SFTP 会话或按 SSH 配置建立后台会话，逐项 `lstat` / `readdir` / `unlink` / `rmdir`，不跟随符号链接。根目录禁止删除；路径缺失按幂等结果处理，文件替代目录及权限错误不会移除记录。
+- `npm run check`、`npm test`（37 项）及 `npm run build` 通过。覆盖仅删除记录、取消二次确认、本机递归删除、外部删除路径、普通文件替代目录、删除失败保留记录及远程 SFTP 递归与符号链接边界。
+- VS Code 1.139.0 隔离宿主基础 smoke 通过，覆盖激活、活动栏入口、服务器命令和管理页单实例；未触发删除确认，也未连接真实 SSH 服务器执行删除。
+- 本次删除功能尚未发布；交付前仍需检查真实宿主里的两次原生确认及本地 / Remote SSH 实际删除行为。
+
+### 顶部提示关闭与测试包交付（2026-11-09，未发布）
+
+- 普通结果与错误提示新增右侧关闭按钮，支持鼠标及键盘激活；关闭仅收起当前提示，后续新消息仍正常展示。长路径换行时按钮保持可见。
+- Node.js 22.23.4 下类型检查、37 项测试和构建通过。VS Code 1.139.0 隔离宿主基础 smoke 通过，并在真实 Webview 中检查了宽 / 窄布局、长路径、鼠标关闭、Enter 关闭、新提示重新出现及错误样式重置；未连接真实 SSH 服务器或执行实际文件夹删除。
+- 用户要求自测通过后自动生成并提供 VSIX，规则已同步至 `AGENTS.md`、`CONTRIBUTING.md` 及本文。测试包沿用 `0.2.2`；没有提交、打标签或上架。
+- 已运行 `npm run package`；测试包 `artifacts/ssh-workspace-manager-0.2.2.vsix` 为 571283 字节，ZIP 完整性、包内版本、UI 宿主声明及 HTML / CSS / JS / bundle 与当前源码一致性检查通过。SHA-256 为 `d2212a2878c804301e6a929b6647ce32c17ec17512598ff6775ccd656cf5f063`。
+
+### 0.2.3 发布验证（2026-11-09，待自动发布）
+
+- 用户确认上述测试包通过，并授权提交、正式发版及上架 Marketplace；版本已更新为 `0.2.3`，发布说明由 `CHANGELOG.md` 的对应版本提取。
+- Node.js 22.23.4 下类型检查、37 项测试、构建与 `npm run package` 通过；本机正式版本 VSIX 为 571385 字节、20 个文件，ZIP 完整性、版本、`extensionKind: ["ui"]` 及包内运行资源一致性检查通过。SHA-256：`c425d1c120d25953702ecfc103f972b4730db1652d4c22fbd2cff0d3f93fef11`。
+- VS Code 1.139.0 隔离宿主 `0.2.3` 基础 smoke 通过，管理页实际渲染正常。提示鼠标 / 键盘与窄窗口交互的验证记录见上一小节；本次自动化复验未捕获 Webview 子框架，未把它记为再次通过。此次仅调整版本和文档，运行逻辑及界面资源与用户确认的测试包一致。
+- `main` 三平台 CI、`v0.2.3` 标签工作流、GitHub Release 与 Marketplace 验证结果将在实际完成后补充；推送代码或创建标签不代表市场发布已完成。
 
 ### 最近验证（0.2.2，2026-11-06）
 
@@ -195,7 +232,7 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 1. 点击活动栏直接打开页面；重复点击和切换各入口不产生重复标签。
 2. 从插件外打开本地及 SSH 工作区，多根逐根记录；重复打开只更新时间，名称与收藏保留。
 3. 手动添加尚未打开目录不进入历史；关闭自动记录后再验证手动记录仍可用。
-4. 历史与收藏跨来源搜索；收藏移除保留历史，历史删除同时移除收藏，实际文件保持完整。
+4. 历史与收藏跨来源搜索；收藏移除保留历史；仅删除记录同时移除收藏但保留文件；物理删除需二次确认完整路径，取消时文件及记录不变，路径已不存在时提示清理记录，删除失败保留记录。
 5. 两个窗口同时收藏、重命名、记录、删除，修改及时互相可见且不覆盖其他修改。
 6. 从远程窗口打开本地项目仍回到本机；两种窗口模式均传递正确的项目 URI。
 7. 隐藏服务器后刷新仍隐藏，全局历史 / 收藏仍可打开，重新导入恢复；新增 Host 不改写旧配置。
@@ -212,6 +249,7 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 | 跨窗口不一致 | 是否为同一用户数据目录 / 档案、globalStorageUri、Store 写入异常、目录 watcher 和聚焦 snapshot；不要复制旧快照回写 |
 | 提示目录记录无法读取 | 备份 catalog，校验 JSON / schema / 路径 ID；保留原文件，不能自动恢复成空目录 |
 | 能 Remote SSH 打开但无法后台浏览 | 用相同 alias/config 检查 ssh -G 输出和本文支持范围、SFTP 子系统、agent 环境、密钥格式、known_hosts；两个连接能力不同 |
+| 连接后提示上次目录不存在 | 路径栏会退回最近可访问的上级目录；若仍需其他位置，直接编辑路径并点“前往”。权限错误不会自动跳转，先检查目录权限或改用可访问路径 |
 | “新窗口”激活已有窗口 | VS Code 会复用已打开相同文件夹的窗口，即使传了 forceNewWindow；不要靠私有命令强行复制窗口 |
 | 目录浏览结果串到另一台服务器 | generation / requestSequence / selectedAlias 的过期回调检查是否被删除或遗漏 |
 | 本地项目打开到错误位置或特殊字符截断 | Uri.file、forceLocalWindow；远程是否改成了字符串拼 URI；Windows 是否误用 POSIX 本地路径 |

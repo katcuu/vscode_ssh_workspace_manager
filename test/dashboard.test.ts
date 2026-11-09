@@ -125,6 +125,44 @@ test('dashboard uses record IDs for both open modes and distinguishes deletion f
   assert.equal(ui.rows()[0].children[0].children[0].textContent, '本地 <project>');
 });
 
+test('server browser can replace a stale path before connecting and recover after a directory error', () => {
+  const ui = dashboard();
+  ui.show('server', 'dev', { initialPath: '/srv/deleted/project' });
+  assert.equal(ui.element('path').disabled, false, 'the saved path remains editable while disconnected');
+  assert.equal(ui.element('go').disabled, false);
+  ui.element('path').value = '/srv/available';
+  ui.element('connect').emit('click');
+  assert.deepEqual(ui.sent.at(-1), { type: 'connect', alias: 'dev', path: '/srv/available' });
+  ui.message({ type: 'error', message: '远程路径不存在。' });
+  ui.message({ type: 'status', message: '目录读取失败；请输入其他路径。', busy: false, connected: true });
+  assert.equal(ui.element('path').disabled, false);
+  assert.equal(ui.element('go').disabled, false);
+  assert.equal(ui.element('openCurrent').disabled, true, 'a failed initial read must not expose a stale open target');
+  assert.equal(ui.element('cloneRepository').disabled, true);
+  assert.match(ui.element('directories').text(), /输入.*路径/);
+  ui.element('path').value = '/srv/valid';
+  ui.element('path').emit('keydown', { key: 'Enter' });
+  assert.deepEqual(ui.sent.at(-1), { type: 'browse', alias: 'dev', path: '/srv/valid' });
+  assert.equal(ui.element('openCurrent').disabled, true, 'the previous directory is not left as an actionable target during navigation');
+  ui.message({ type: 'status', message: '目录读取失败；可修改路径后点击「前往」，或重新连接。', busy: false, connected: true });
+  assert.equal(ui.element('openCurrent').disabled, true, 'a failed navigation must not expose the previous directory as the new path');
+  assert.equal(ui.element('cloneRepository').disabled, true);
+  assert.equal(ui.element('target').textContent, '—');
+  ui.element('path').emit('keydown', { key: 'Enter' });
+  assert.deepEqual(ui.sent.at(-1), { type: 'browse', alias: 'dev', path: '/srv/valid' });
+  ui.message({ type: 'browseResult', alias: 'dev', path: '/srv/valid', entries: [], backend: 'SFTP 后台浏览' });
+  assert.equal(ui.element('openCurrent').disabled, false);
+
+  ui.element('disconnect').emit('click');
+  assert.equal(ui.element('path').disabled, false);
+  ui.element('path').value = '/home/test';
+  ui.element('go').emit('click');
+  assert.deepEqual(ui.sent.at(-1), { type: 'connect', alias: 'dev', path: '/home/test' });
+  ui.message({ type: 'status', message: '后台连接未就绪。', busy: false, connected: false });
+  assert.equal(ui.element('path').disabled, false, 'connection failures must not lock out path edits either');
+  assert.equal(ui.element('go').disabled, false);
+});
+
 test('dashboard resizer adjusts and remembers separate server and local pane widths', () => {
   const ui = dashboard({ paneRatios: { server: 60, local: 64 } });
   const splitter = ui.element('paneSplitter');

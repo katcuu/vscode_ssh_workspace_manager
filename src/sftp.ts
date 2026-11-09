@@ -22,6 +22,22 @@ function sftpError(error: Error & { code?: number }, diagnostics: SshDiagnostics
   return new Error('无法读取远程目录，连接可能已断开或服务器未启用 SFTP。', { cause: error });
 }
 
+function sftpDeleteError(error: Error & { code?: number }, diagnostics: SshDiagnostics): Error {
+  diagnostics.event('directory', 'delete-failed', {}, error);
+  if (error.code === 2) return new Error('远程路径不存在或已被移除。', { cause: error });
+  if (error.code === 3) return new Error('没有权限删除此远程文件夹。', { cause: error });
+  return new Error('无法删除远程文件夹，请检查服务器连接和目录权限。', { cause: error });
+}
+
+function isMissingPath(error: unknown): boolean {
+  for (let depth = 0; depth < 5 && error && typeof error === 'object'; depth++) {
+    const detail = error as { code?: unknown; cause?: unknown };
+    if (detail.code === 2 || detail.code === 'ENOENT') return true;
+    error = detail.cause;
+  }
+  return false;
+}
+
 function timeout<T>(operation: Promise<T>, ms: number, onTimeout: () => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { onTimeout(); reject(new Error('远程目录请求超时，请重新连接。')); }, ms);
@@ -67,7 +83,7 @@ export class SftpSession {
     this.touch();
     this.diagnostics.event('directory', 'readdir');
     const directory = normalizeRemotePath(path);
-    if (!await this.isDirectory(directory)) throw new Error('此路径不是文件夹。');
+    if (!await this.isDirectory(directory)) throw Object.assign(new Error('此路径不是文件夹。'), { code: 'ENOTDIR' });
     const entries = await timeout(new Promise<import('ssh2').FileEntryWithStats[]>((resolve, reject) => {
       this.sftp.readdir(directory, (error, list) => error ? reject(sftpError(error, this.diagnostics)) : resolve(list));
     }), 20000, () => this.close());
@@ -89,6 +105,53 @@ export class SftpSession {
     }));
     this.diagnostics.event('directory', 'listed', { directories: result.length });
     return result.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async deleteDirectory(path: string, onProgress: (deleted: number, currentPath: string) => void = () => {}): Promise<number> {
+    if (this.closed) throw new Error('后台浏览连接已关闭，请重新连接。');
+    const directory = normalizeRemotePath(path);
+    if (directory === '/') throw new Error('为保护服务器，不能删除根目录。');
+    let deleted = 0;
+
+    const request = <T>(operation: (callback: (error: (Error & { code?: number }) | null | undefined, value?: T) => void) => void) =>
+      timeout(new Promise<T>((resolve, reject) => operation((error, value) => {
+        if (error) reject(sftpDeleteError(error, this.diagnostics)); else resolve(value as T);
+      })), 20000, () => this.close());
+
+    const remove = async (currentPath: string, target = false): Promise<void> => {
+      this.touch();
+      let stats: import('ssh2').Stats;
+      try { stats = await request<import('ssh2').Stats>(callback => this.sftp.lstat(currentPath, callback)); }
+      catch (error) { if (isMissingPath(error)) return; throw error; }
+
+      if (target && !stats.isDirectory() && !stats.isSymbolicLink()) {
+        throw new Error('此路径已不是文件夹，未删除实际文件。请仅删除项目记录，或先检查服务器上的路径。');
+      }
+      if (stats.isDirectory()) {
+        let entries: import('ssh2').FileEntryWithStats[];
+        try { entries = await request<import('ssh2').FileEntryWithStats[]>(callback => this.sftp.readdir(currentPath, callback)); }
+        catch (error) { if (isMissingPath(error)) return; throw error; }
+        for (const entry of entries) {
+          if (!entry.filename || entry.filename === '.' || entry.filename === '..' || /[\x00-\x1f\x7f/]/.test(entry.filename)) {
+            throw new Error('服务器返回了无效的目录项，已停止删除以保护其他路径。');
+          }
+          await remove(posix.join(currentPath, entry.filename));
+        }
+        try { await request<void>(callback => this.sftp.rmdir(currentPath, callback)); }
+        catch (error) { if (!isMissingPath(error)) throw error; }
+      } else {
+        try { await request<void>(callback => this.sftp.unlink(currentPath, callback)); }
+        catch (error) { if (!isMissingPath(error)) throw error; }
+      }
+      deleted += 1;
+      onProgress(deleted, currentPath);
+      this.touch();
+    };
+
+    this.diagnostics.event('directory', 'delete-started');
+    await remove(directory, true);
+    this.diagnostics.event('directory', 'delete-completed', { entries: deleted });
+    return deleted;
   }
 
   async cloneRepository(parentPath: string, repositoryUrl: string, prompts: GitClonePrompts, signal: AbortSignal,

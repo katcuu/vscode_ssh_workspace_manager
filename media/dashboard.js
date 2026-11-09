@@ -67,7 +67,7 @@
   }
 
   function showNotice(message, error = false) {
-    $('notice').textContent = message; $('notice').className = error ? 'error' : ''; $('notice').hidden = false;
+    $('noticeMessage').textContent = message; $('notice').className = error ? 'error' : ''; $('notice').hidden = false;
   }
 
   function chooseView(view, alias, initialPath) {
@@ -135,7 +135,7 @@
       }
       const remove = button(state.view === 'favorites' ? '取消收藏' : '删除记录',
         () => send(state.view === 'favorites' ? 'unfavorite' : 'remove', { id: folder.id }));
-      remove.title = state.view === 'favorites' ? '取消收藏，保留历史记录' : '删除此项目的收藏和历史记录，实际文件保留';
+      remove.title = state.view === 'favorites' ? '取消收藏，保留历史记录' : '选择仅删除记录，或二次确认后删除实际文件夹';
       remove.setAttribute('aria-label', `${state.view === 'favorites' ? '取消收藏' : '删除记录'}：${folder.name}`);
       actions.append(
         button('重命名', () => send('rename', { id: folder.id })),
@@ -152,9 +152,16 @@
   }
 
   function navigate(path) {
-    if (state.busy || state.cloneBusy || !state.connected) return;
-    state.selected = undefined; state.busy = true; renderBrowser();
+    if (!state.alias || state.busy || state.cloneBusy) return;
+    if (!state.connected) { connect(path); return; }
+    state.path = ''; state.entries = []; state.selected = undefined; state.busy = true; renderBrowser();
     send('browse', { alias: state.alias, path });
+  }
+
+  function connect(path) {
+    if (!state.alias || state.busy || state.cloneBusy) return;
+    state.busy = true; state.connected = false; state.path = ''; state.entries = []; state.selected = undefined;
+    renderBrowser(); send('connect', { alias: state.alias, path });
   }
 
   function renderCloneControls() {
@@ -221,8 +228,9 @@
     $('connect').disabled = !state.alias || state.busy || state.cloneBusy;
     $('connect').textContent = state.connected ? '重新连接' : '连接并浏览';
     $('disconnect').disabled = !state.alias || (!state.connected && !state.busy && !state.cloneBusy);
-    for (const id of ['go', 'refresh']) $(id).disabled = !state.connected || state.busy || state.cloneBusy;
-    $('path').disabled = !state.connected || state.busy || state.cloneBusy;
+    $('go').disabled = !state.alias || state.busy || state.cloneBusy;
+    $('refresh').disabled = !state.connected || state.busy || state.cloneBusy || !state.path;
+    $('path').disabled = !state.alias || state.busy || state.cloneBusy;
     $('showHidden').disabled = !state.connected || state.cloneBusy;
     $('up').disabled = !state.connected || state.busy || state.cloneBusy || !state.path || state.path === '/';
     for (const id of ['saveTarget', 'openCurrent', 'openNew']) $(id).disabled = !state.connected || state.busy || state.cloneBusy || !target();
@@ -248,7 +256,10 @@
       const enter = button('进入 →', () => navigate(entry.path), 'enter-directory'); enter.disabled = state.busy || state.cloneBusy || !state.connected;
       row.append(select, enter); $('directories').append(row);
     }
-    if (!entries.length) $('directories').append(paragraph(state.connected ? (state.entries.length ? '仅有隐藏目录；可勾选「隐藏目录」。' : '此目录下没有子文件夹，可以直接打开当前目录。') : '连接后在这里浏览服务端文件夹。单击选中，双击进入。', 'empty'));
+    if (!entries.length) $('directories').append(paragraph(state.connected
+      ? !state.path ? '未能读取目录，请输入其他绝对路径后点击「前往」。'
+        : state.entries.length ? '仅有隐藏目录；可勾选「隐藏目录」。' : '此目录下没有子文件夹，可以直接打开当前目录。'
+      : '连接后在这里浏览服务端文件夹。单击选中，双击进入。', 'empty'));
     $('breadcrumbs').replaceChildren();
     if (state.path) {
       const root = button('/', () => navigate('/')); root.disabled = state.busy || state.cloneBusy || !state.connected; $('breadcrumbs').append(root);
@@ -312,13 +323,14 @@
     paneResizeObserver.observe($('main'));
   }
 
+  $('dismissNotice').addEventListener('click', () => { $('notice').hidden = true; });
   $('record').addEventListener('click', () => send('recordCurrent'));
   $('addFolder').addEventListener('click', () => send(state.view === 'local' ? 'addLocalFolder' : 'addFolder', { alias: state.alias }));
   $('search').addEventListener('input', renderFolders);
   $('favoritesOnly').addEventListener('change', renderFolders);
   $('showHidden').addEventListener('change', () => { state.selected = undefined; renderBrowser(); });
-  $('connect').addEventListener('click', () => { state.busy = true; state.connected = false; state.entries = []; state.selected = undefined; renderBrowser(); send('connect', { alias: state.alias }); });
-  $('disconnect').addEventListener('click', () => { state.busy = false; state.connected = false; state.cloneBusy = false; state.cloneCanceling = false; state.cloneScope = undefined; state.cloneMessage = ''; state.clonePercent = undefined; state.entries = []; state.selected = undefined; renderBrowser(); send('cancel'); });
+  $('connect').addEventListener('click', () => connect($('path').value));
+  $('disconnect').addEventListener('click', () => { state.busy = false; state.connected = false; state.path = ''; state.cloneBusy = false; state.cloneCanceling = false; state.cloneScope = undefined; state.cloneMessage = ''; state.clonePercent = undefined; state.entries = []; state.selected = undefined; renderBrowser(); send('cancel'); });
   $('go').addEventListener('click', () => navigate($('path').value));
   $('path').addEventListener('keydown', event => { if (event.key === 'Enter') navigate($('path').value); });
   $('up').addEventListener('click', () => navigate(state.path.slice(0, state.path.lastIndexOf('/')) || '/'));
