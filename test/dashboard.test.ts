@@ -307,3 +307,36 @@ test('local view clones through the local Git flow and keeps unopened projects o
   ui.show('history', undefined, { cloneResult: localResult, cloneOperation: null });
   assert.equal(ui.element('cloneResultPath').textContent, localResult.path);
 });
+
+test('browser folder controls distinguish current parent from selection and recover after completion or cancellation', () => {
+  const ui = dashboard();
+  ui.show('server', 'dev');
+  assert.equal(ui.element('createDirectory').disabled, true);
+  assert.equal(ui.element('deleteDirectory').disabled, true);
+  ui.message({ type: 'browseResult', alias: 'dev', path: '/srv', entries: [
+    { name: 'code', path: '/srv/code', symlink: false }
+  ], backend: 'fixture' });
+  assert.equal(ui.element('createDirectory').disabled, false);
+  assert.equal(ui.element('deleteDirectory').disabled, true, 'deleting the current directory is never offered');
+  ui.element('directories').children[0].children[0].emit('click');
+  assert.equal(ui.element('deleteDirectory').disabled, false);
+  ui.element('createDirectory').emit('click');
+  assert.deepEqual(ui.sent.at(-1), { type: 'createDirectory', alias: 'dev', parentPath: '/srv' });
+  assert.equal(ui.element('go').disabled, true);
+  assert.equal(ui.element('deleteDirectory').disabled, true);
+  assert.equal(ui.element('directoryOperationStatus').hidden, false);
+  ui.message({ type: 'directoryOperation', alias: 'dev', busy: false });
+  assert.equal(ui.element('createDirectory').disabled, false, 'cancelling the native prompt restores controls');
+  ui.element('deleteDirectory').emit('click');
+  assert.deepEqual(ui.sent.at(-1), { type: 'deleteDirectory', alias: 'dev', parentPath: '/srv', path: '/srv/code' });
+  ui.message({ type: 'browseResult', alias: 'dev', path: '/srv', selectedPath: '/srv/new folder', entries: [
+    { name: 'new folder', path: '/srv/new folder', symlink: false }
+  ], backend: 'fixture' });
+  ui.message({ type: 'directoryOperation', alias: 'dev', busy: false });
+  assert.equal(ui.element('target').textContent, 'dev : /srv/new folder');
+  assert.equal(ui.element('deleteDirectory').disabled, false);
+  ui.element('repositoryUrl').value = 'http://git.example.test/team/repo.git';
+  ui.element('cloneRepository').emit('click');
+  assert.equal(ui.sent.at(-1)?.url, 'http://git.example.test/team/repo.git');
+  assert.equal(ui.element('createDirectory').disabled, true, 'directory writes cannot race with Git clone');
+});

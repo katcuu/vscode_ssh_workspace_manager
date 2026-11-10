@@ -4,23 +4,12 @@ import { chmod, rm, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { GitClonePrompts, GitCloneProgress, GitPrompt, parseGitProgress, parseGitPrompt, parseGitRepositoryUrl, stripTerminalSequences } from './gitClone';
+import { GitClonePrompts, GitCloneProgress, GitPrompt, GitRepository, parseGitProgress, parseGitPrompt, parseGitRepositoryUrl, stripTerminalSequences } from './gitClone';
 import { normalizeLocalPath } from './model';
 
 export const ASKPASS_PIPE_ENV = 'SSH_WORKSPACE_MANAGER_ASKPASS_PIPE';
 
 function aborted(): Error { return new Error('克隆已取消。'); }
-
-function quotePosix(value: string): string { return `'${value.replace(/'/g, `'\\''`)}'`; }
-
-function quoteWindows(value: string): string {
-  return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, '$1$1')}"`;
-}
-
-function askpassCommand(helperPath: string): string {
-  const quote = process.platform === 'win32' ? quoteWindows : quotePosix;
-  return `${quote(process.execPath)} ${quote(helperPath)}`;
-}
 
 function localDestination(parentPath: string, name: string): string {
   if (process.platform === 'win32' && (/[<>:"|?*]/.test(name) || /[ .]$/.test(name)
@@ -111,7 +100,7 @@ function promptError(prompt: GitPrompt, host: string): Error {
   return new Error('Git 请求了暂不支持的认证方式；请检查地址，或使用 SSH key/agent / HTTPS 访问令牌。');
 }
 
-function localFailure(output: string, protocol: 'ssh' | 'https', host: string): Error {
+function localFailure(output: string, protocol: GitRepository['protocol'], host: string): Error {
   const text = stripTerminalSequences(output).toLowerCase();
   if (/destination path .* already exists|already exists and is not an empty directory/.test(text)) {
     return new Error('目标仓库目录已存在。请选择其他父目录，或先处理已有目录。');
@@ -123,7 +112,7 @@ function localFailure(output: string, protocol: 'ssh' | 'https', host: string): 
     return new Error(`无法通过 SSH 访问 Git 仓库 ${host}。请检查本机 key/agent 或 SSH 账号密码，也可改用 HTTPS 地址。`);
   }
   if (/authentication failed|invalid username or password|terminal prompts disabled/.test(text)) {
-    return new Error(protocol === 'https' ? 'Git HTTPS 认证失败，请检查用户名和访问令牌后重试。' : `Git SSH 认证失败，请检查本机 key/agent（${host}）。`);
+    return new Error(protocol !== 'ssh' ? `Git ${protocol.toUpperCase()} 认证失败，请检查用户名和密码 / 访问令牌后重试。` : `Git SSH 认证失败，请检查本机 key/agent（${host}）。`);
   }
   return new Error('Git 克隆失败。请检查仓库地址、访问权限、本机网络和目标目录权限。');
 }
@@ -214,12 +203,11 @@ export async function cloneLocalRepository(parentPath: string, repositoryUrl: st
     if (signal.aborted) { finish(aborted()); return; }
     try {
       const command = 'git';
-      const commandText = askpassCommand(path.resolve(helperPath));
       const sshAskpass = path.join(path.dirname(path.resolve(helperPath)), process.platform === 'win32' ? 'git-askpass.cmd' : 'git-askpass.sh');
       child = spawn(command, ['-c', 'credential.helper=', 'clone', '--progress', '--', repository.url, destination], {
         cwd: parent, windowsHide: true, detached: process.platform !== 'win32',
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: commandText, SSH_ASKPASS: sshAskpass,
+        env: { ...process.env, LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: sshAskpass, SSH_ASKPASS: sshAskpass,
           SSH_WORKSPACE_MANAGER_ASKPASS_NODE: process.execPath, SSH_WORKSPACE_MANAGER_ASKPASS_HELPER: path.resolve(helperPath),
           SSH_ASKPASS_REQUIRE: 'force', ELECTRON_RUN_AS_NODE: '1', [ASKPASS_PIPE_ENV]: interactiveBridge.endpoint }
       });

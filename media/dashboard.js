@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
   const persistedUiState = vscode.getState() || {};
   const persistedPaneRatios = persistedUiState.paneRatios || {};
-  const state = { servers: [], folders: [], browsePaths: {}, view: 'all', alias: undefined, path: '', entries: [], selected: undefined, connected: false, busy: false, cloneBusy: false, cloneCanceling: false, cloneScope: undefined, cloneMessage: '', clonePercent: undefined, cloneResult: undefined, localCloneParent: '', paneRatios: {
+  const state = { servers: [], folders: [], browsePaths: {}, view: 'all', alias: undefined, path: '', entries: [], selected: undefined, connected: false, busy: false, directoryBusy: false, cloneBusy: false, cloneCanceling: false, cloneScope: undefined, cloneMessage: '', clonePercent: undefined, cloneResult: undefined, localCloneParent: '', paneRatios: {
     server: Number.isFinite(persistedPaneRatios.server) ? persistedPaneRatios.server : 56,
     local: Number.isFinite(persistedPaneRatios.local) ? persistedPaneRatios.local : 62.5
   }, initialized: false };
@@ -152,22 +152,22 @@
   }
 
   function navigate(path) {
-    if (!state.alias || state.busy || state.cloneBusy) return;
+    if (!state.alias || state.busy || state.directoryBusy || state.cloneBusy) return;
     if (!state.connected) { connect(path); return; }
     state.path = ''; state.entries = []; state.selected = undefined; state.busy = true; renderBrowser();
     send('browse', { alias: state.alias, path });
   }
 
   function connect(path) {
-    if (!state.alias || state.busy || state.cloneBusy) return;
+    if (!state.alias || state.busy || state.directoryBusy || state.cloneBusy) return;
     state.busy = true; state.connected = false; state.path = ''; state.entries = []; state.selected = undefined;
     renderBrowser(); send('connect', { alias: state.alias, path });
   }
 
   function renderCloneControls() {
     const active = state.cloneBusy && state.cloneScope === 'remote';
-    $('repositoryUrl').disabled = !state.connected || state.busy || state.cloneBusy;
-    $('cloneRepository').disabled = !state.connected || state.busy || state.cloneBusy || !target() || !$('repositoryUrl').value.trim();
+    $('repositoryUrl').disabled = !state.connected || state.busy || state.directoryBusy || state.cloneBusy;
+    $('cloneRepository').disabled = !state.connected || state.busy || state.directoryBusy || state.cloneBusy || !target() || !$('repositoryUrl').value.trim();
     $('cloneDestinationHint').textContent = state.connected && target()
       ? `${state.alias} : ${target()} · 将按仓库名创建子目录`
       : '连接并选择一个父目录后，将按仓库名创建子目录。';
@@ -182,9 +182,9 @@
 
   function renderLocalCloneControls() {
     const active = state.cloneBusy && state.cloneScope === 'local';
-    $('selectLocalCloneParent').disabled = state.cloneBusy;
-    $('localRepositoryUrl').disabled = state.cloneBusy;
-    $('cloneLocalRepository').disabled = state.cloneBusy || !state.localCloneParent || !$('localRepositoryUrl').value.trim();
+    $('selectLocalCloneParent').disabled = state.cloneBusy || state.directoryBusy;
+    $('localRepositoryUrl').disabled = state.cloneBusy || state.directoryBusy;
+    $('cloneLocalRepository').disabled = state.cloneBusy || state.directoryBusy || !state.localCloneParent || !$('localRepositoryUrl').value.trim();
     $('localCloneParent').textContent = state.localCloneParent || '尚未选择父文件夹';
     $('localCloneDestinationHint').textContent = state.localCloneParent
       ? `${state.localCloneParent} · 将按仓库名创建子目录` : '选择父文件夹后，将按仓库名在本机创建子目录。';
@@ -224,16 +224,25 @@
     $('dismissCloneResult').hidden = !!operation;
   }
 
+  function renderDirectoryControls() {
+    const unavailable = !state.connected || !state.path || state.busy || state.directoryBusy || state.cloneBusy;
+    $('createDirectory').disabled = unavailable;
+    $('deleteDirectory').disabled = unavailable || !state.selected;
+    $('createDirectory').title = state.path ? `在 ${state.path} 下新建子文件夹` : '请先连接并浏览目录';
+    $('deleteDirectory').title = state.selected ? `删除 ${state.selected}，需两次确认` : '请先单击选中一个子文件夹';
+  }
+
   function renderBrowser() {
-    $('connect').disabled = !state.alias || state.busy || state.cloneBusy;
+    renderDirectoryControls();
+    $('connect').disabled = !state.alias || state.busy || state.directoryBusy || state.cloneBusy;
     $('connect').textContent = state.connected ? '重新连接' : '连接并浏览';
     $('disconnect').disabled = !state.alias || (!state.connected && !state.busy && !state.cloneBusy);
-    $('go').disabled = !state.alias || state.busy || state.cloneBusy;
-    $('refresh').disabled = !state.connected || state.busy || state.cloneBusy || !state.path;
-    $('path').disabled = !state.alias || state.busy || state.cloneBusy;
-    $('showHidden').disabled = !state.connected || state.cloneBusy;
-    $('up').disabled = !state.connected || state.busy || state.cloneBusy || !state.path || state.path === '/';
-    for (const id of ['saveTarget', 'openCurrent', 'openNew']) $(id).disabled = !state.connected || state.busy || state.cloneBusy || !target();
+    $('go').disabled = !state.alias || state.busy || state.directoryBusy || state.cloneBusy;
+    $('refresh').disabled = !state.connected || state.busy || state.directoryBusy || state.cloneBusy || !state.path;
+    $('path').disabled = !state.alias || state.busy || state.directoryBusy || state.cloneBusy;
+    $('showHidden').disabled = !state.connected || state.busy || state.directoryBusy || state.cloneBusy;
+    $('up').disabled = !state.connected || state.busy || state.directoryBusy || state.cloneBusy || !state.path || state.path === '/';
+    for (const id of ['saveTarget', 'openCurrent', 'openNew']) $(id).disabled = !state.connected || state.busy || state.directoryBusy || state.cloneBusy || !target();
     renderCloneControls();
     renderLocalCloneControls();
     $('target').textContent = state.alias && target() ? `${state.alias} : ${target()}` : '—';
@@ -249,11 +258,11 @@
         }
         row.classList.add('selected'); select.setAttribute('aria-pressed', 'true');
         $('target').textContent = `${state.alias} : ${entry.path}`;
-        renderCloneControls();
+        renderCloneControls(); renderDirectoryControls();
       }, 'select-directory');
-      select.setAttribute('aria-pressed', String(state.selected === entry.path)); select.disabled = state.busy || state.cloneBusy || !state.connected;
+      select.setAttribute('aria-pressed', String(state.selected === entry.path)); select.disabled = state.busy || state.directoryBusy || state.cloneBusy || !state.connected;
       select.addEventListener('dblclick', () => navigate(entry.path));
-      const enter = button('进入 →', () => navigate(entry.path), 'enter-directory'); enter.disabled = state.busy || state.cloneBusy || !state.connected;
+      const enter = button('进入 →', () => navigate(entry.path), 'enter-directory'); enter.disabled = state.busy || state.directoryBusy || state.cloneBusy || !state.connected;
       row.append(select, enter); $('directories').append(row);
     }
     if (!entries.length) $('directories').append(paragraph(state.connected
@@ -262,12 +271,12 @@
       : '连接后在这里浏览服务端文件夹。单击选中，双击进入。', 'empty'));
     $('breadcrumbs').replaceChildren();
     if (state.path) {
-      const root = button('/', () => navigate('/')); root.disabled = state.busy || state.cloneBusy || !state.connected; $('breadcrumbs').append(root);
+      const root = button('/', () => navigate('/')); root.disabled = state.busy || state.directoryBusy || state.cloneBusy || !state.connected; $('breadcrumbs').append(root);
       let path = '';
       for (const part of state.path.split('/').filter(Boolean)) {
         path += `/${part}`;
         const destination = path;
-        const crumb = button(part, () => navigate(destination)); crumb.disabled = state.busy || state.cloneBusy || !state.connected;
+        const crumb = button(part, () => navigate(destination)); crumb.disabled = state.busy || state.directoryBusy || state.cloneBusy || !state.connected;
         const separator = document.createElement('span'); separator.textContent = ' / '; $('breadcrumbs').append(separator, crumb);
       }
     }
@@ -335,10 +344,19 @@
   $('path').addEventListener('keydown', event => { if (event.key === 'Enter') navigate($('path').value); });
   $('up').addEventListener('click', () => navigate(state.path.slice(0, state.path.lastIndexOf('/')) || '/'));
   $('refresh').addEventListener('click', () => navigate(state.path));
+  for (const type of ['createDirectory', 'deleteDirectory']) $(type).addEventListener('click', () => {
+    if (!state.alias || !state.connected || !state.path || state.busy || state.directoryBusy || state.cloneBusy) return;
+    if (type === 'deleteDirectory' && !state.selected) return;
+    state.directoryBusy = true;
+    $('directoryOperationStatus').textContent = type === 'createDirectory' ? '等待输入文件夹名称…' : '等待确认删除…';
+    $('directoryOperationStatus').hidden = false;
+    renderBrowser();
+    send(type, { alias: state.alias, parentPath: state.path, ...(type === 'deleteDirectory' ? { path: state.selected } : {}) });
+  });
   $('saveTarget').addEventListener('click', () => send('saveFolder', { alias: state.alias, path: target() }));
   $('repositoryUrl').addEventListener('input', renderCloneControls);
   $('cloneRepository').addEventListener('click', () => {
-    if (!state.alias || !state.connected || !target() || !$('repositoryUrl').value.trim()) return;
+    if (!state.alias || !state.connected || !target() || state.directoryBusy || state.busy || state.cloneBusy || !$('repositoryUrl').value.trim()) return;
     const selectedPath = target();
     state.cloneBusy = true; state.cloneCanceling = false; state.cloneScope = 'remote'; state.clonePercent = undefined; state.cloneMessage = '正在准备 Git 克隆…';
     state.cloneResult = undefined;
@@ -347,7 +365,7 @@
   $('selectLocalCloneParent').addEventListener('click', () => send('selectLocalCloneParent'));
   $('localRepositoryUrl').addEventListener('input', renderLocalCloneControls);
   $('cloneLocalRepository').addEventListener('click', () => {
-    if (!state.localCloneParent || !$('localRepositoryUrl').value.trim() || state.cloneBusy) return;
+    if (!state.localCloneParent || !$('localRepositoryUrl').value.trim() || state.cloneBusy || state.directoryBusy) return;
     state.cloneBusy = true; state.cloneCanceling = false; state.cloneScope = 'local'; state.clonePercent = undefined; state.cloneMessage = '正在准备本机 Git 克隆…';
     state.cloneResult = undefined;
     renderLocalCloneControls();
@@ -377,6 +395,7 @@
     switch (message.type) {
       case 'snapshot':
         state.servers = message.servers; state.folders = message.folders; state.browsePaths = message.browsePaths;
+        if (Object.hasOwn(message, 'directoryBusy')) state.directoryBusy = message.directoryBusy === true;
         state.localCloneParent = message.localCloneParent || state.localCloneParent;
         if (Object.hasOwn(message, 'cloneResult')) state.cloneResult = message.cloneResult || undefined;
         if (!state.initialized || state.alias !== message.selectedAlias || state.view !== message.selectedView)
@@ -398,9 +417,15 @@
         $('path').value = message.path; renderBrowser(); break;
       case 'browseResult':
         if (message.alias !== state.alias) return;
-        state.path = message.path; state.entries = message.entries; state.selected = undefined; state.connected = true; state.busy = false;
+        state.path = message.path; state.entries = message.entries; state.selected = message.entries.some(entry => entry.path === message.selectedPath) ? message.selectedPath : undefined; state.connected = true; state.busy = false;
+        if (state.selected && state.entries.some(entry => entry.path === state.selected && entry.name.startsWith('.'))) $('showHidden').checked = true;
         $('path').value = message.path; $('connectionStatus').textContent = `${message.backend} · ${message.entries.length} 个子文件夹`;
         $('notice').hidden = true; renderBrowser(); break;
+      case 'directoryOperation':
+        state.directoryBusy = message.busy === true;
+        $('directoryOperationStatus').textContent = message.message || '';
+        $('directoryOperationStatus').hidden = !state.directoryBusy;
+        renderBrowser(); break;
       case 'status':
         state.busy = message.busy; state.connected = message.connected; state.selected = undefined;
         $('connectionStatus').textContent = message.message; renderBrowser(); break;

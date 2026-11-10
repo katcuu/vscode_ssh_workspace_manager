@@ -69,6 +69,8 @@ main[data-view="server"] .saved #folders, main[data-view="local"] .saved #folder
 .pathbar { display: flex; gap: 4px; }
 .pathbar input { flex: 1; font-family: var(--vscode-editor-font-family, monospace); }
 .browse-options { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; padding: 8px 0; }
+.directory-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; }
+.directory-tools .muted { overflow-wrap: anywhere; }
 #breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0; min-width: 0; }
 #breadcrumbs button { min-height: 26px; font-size: 12px; padding: 2px 4px; border-color: transparent; background: transparent; color: var(--vscode-textLink-foreground); overflow-wrap: anywhere; }
 .directories { min-height: 120px; max-height: 240px; overflow-y: auto; border: 1px solid var(--vscode-panel-border); border-radius: 5px; }

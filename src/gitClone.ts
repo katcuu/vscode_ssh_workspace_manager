@@ -5,7 +5,7 @@ export interface GitRepository {
   url: string;
   host: string;
   name: string;
-  protocol: 'ssh' | 'https';
+  protocol: 'ssh' | 'https' | 'http';
 }
 
 export interface GitCloneProgress {
@@ -48,13 +48,13 @@ export function parseGitRepositoryUrl(value: string): GitRepository {
   const url = value.trim();
   if (!url || url.length > 4096 || /[\x00-\x1f\x7f]/.test(url)) throw new Error('请输入有效的 Git 仓库地址。');
 
-  if (/^https:\/\//i.test(url)) {
+  if (/^https?:\/\//i.test(url)) {
     let parsed: URL;
-    try { parsed = new URL(url); } catch { throw new Error('HTTPS 仓库地址无效。'); }
+    try { parsed = new URL(url); } catch { throw new Error('HTTP / HTTPS 仓库地址无效。'); }
     if (!parsed.hostname || parsed.username || parsed.password || parsed.search || parsed.hash) {
-      throw new Error('HTTPS 地址不要包含账号、令牌、查询参数或片段；需要认证时会安全提示输入。');
+      throw new Error('HTTP / HTTPS 地址不要包含账号、令牌、查询参数或片段；需要认证时会提示输入。');
     }
-    return { url, host: parsed.hostname, name: repositoryName(parsed.pathname), protocol: 'https' };
+    return { url, host: parsed.hostname, name: repositoryName(parsed.pathname), protocol: parsed.protocol === 'http:' ? 'http' : 'https' };
   }
 
   if (/^ssh:\/\//i.test(url)) {
@@ -65,12 +65,12 @@ export function parseGitRepositoryUrl(value: string): GitRepository {
   }
 
   if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(url)) {
-    throw new Error('仅支持 SSH 和 HTTPS 仓库地址。');
+    throw new Error('仅支持 SSH、HTTPS 和 HTTP 仓库地址。');
   }
 
   const scp = /^(?:([^@/:\s]+)@)?(\[[^\]]+\]|[A-Za-z0-9.-]+):(.+)$/.exec(url);
   if (!scp || /[\x00-\x1f\x7f]/.test(scp[3])) {
-    throw new Error('仅支持 SSH 地址（git@host:group/repo.git 或 ssh://...）和 HTTPS 地址。');
+    throw new Error('仅支持 SSH 地址（git@host:group/repo.git 或 ssh://...）、HTTPS 和 HTTP 地址。');
   }
   return { url, host: scp[2].replace(/^\[|\]$/g, ''), name: repositoryName(scp[3]), protocol: 'ssh' };
 }
@@ -94,9 +94,9 @@ export function stripTerminalSequences(value: string): string {
 export function parseGitPrompt(value: string, protocol: GitRepository['protocol']): GitPrompt | undefined {
   const text = stripTerminalSequences(value).replace(/\r/g, '\n');
   const username = /(?:^|\n)Username for '([^']+)':\s*$/i.exec(text);
-  if (protocol === 'https' && username) return { type: 'username', target: username[1] };
+  if (protocol !== 'ssh' && username) return { type: 'username', target: username[1] };
   const password = /(?:^|\n)Password for '([^']+)':\s*$/i.exec(text);
-  if (protocol === 'https' && password) return { type: 'password', target: password[1] };
+  if (protocol !== 'ssh' && password) return { type: 'password', target: password[1] };
   const sshPassword = /(?:^|\n)([^@\s]+)@([^'\r\n]+)'s password:\s*$/i.exec(text);
   if (protocol === 'ssh' && sshPassword) return { type: 'ssh-password', username: sshPassword[1], target: sshPassword[2] };
   const passphrase = /(?:^|\n)Enter passphrase for key '([^']*)':\s*$/i.exec(text);

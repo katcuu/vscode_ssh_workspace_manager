@@ -10,24 +10,38 @@ GitHub Release 的正文从 `CHANGELOG.md` 对应版本提取，不再只生成�
 
 自动发布不会替开发者递增版本号。新版本需要先在 main 更新扩展版本和 CHANGELOG，再通过一个匹配的 tag 发布。
 
+## 版本号规则
+
+正式版本使用 `A.B.C`，按本次发布中级别最高的变化递增：
+
+| 变更 | 更新规则 | 示例 |
+| --- | --- | --- |
+| 大功能变更，或页面设计变化较大 | 主版本 `A` 加一，`B`、`C` 归零 | `1.2.3` → `2.0.0` |
+| 新增小功能 | 次版本 `B` 加一，`C` 归零 | `1.2.3` → `1.3.0` |
+| Bug 修复 | 补丁版本 `C` 加一 | `1.2.3` → `1.2.4` |
+
+这套规则也适用于 `0.x.y` 阶段。例如 HTTP 克隆及浏览区新建 / 删除文件夹属于新增小功能，从 `0.2.3` 升至 `0.3.0`。同一版本同时有新增功能和 Bug 修复时采用次版本更新，不再另外增加补丁号。
+
+测试包默认沿用当前版本；用户确认正式发布后，再同步更新 `package.json`、`package-lock.json` 根包版本、`CHANGELOG.md` 和 `vA.B.C` 标签。纯文档维护不单独发布扩展版本。
+
 ## 发布新版本
 
-先选定一个尚未发布的版本号，例如 0.2.1。在仓库根目录运行以下命令；把示例版本换成实际版本：
+按上述规则选定一个尚未发布的版本号，例如 0.3.0。在仓库根目录运行以下命令；把示例版本换成实际版本：
 
 ```sh
-npm version 0.2.1 --no-git-tag-version
+npm version 0.3.0 --no-git-tag-version
 ```
 
 检查 package.json 和 package-lock.json 的版本已更新，补充 CHANGELOG，完成相关验证，然后提交并推送 main。确认 GitHub Actions 的三平台检查通过后，创建并推送版本 tag：
 
 ```sh
-git tag v0.2.1
-git push origin v0.2.1
+git tag -a v0.3.0 -m "Release 0.3.0"
+git push origin v0.3.0
 ```
 
 打开该 tag 对应的 Actions run。所有检查通过后：
 
-- GitHub Release 会附上 ssh-workspace-manager-0.2.1.vsix，可长期下载。
+- GitHub Release 会附上 ssh-workspace-manager-0.3.0.vsix，可长期下载。
 - Marketplace job 会用 OIDC 上传该 VSIX。Marketplace 仍需完成平台扫描和验证后才会显示新版本。
 - Actions 页面也会提供同一 VSIX 构建产物，保留 30 天。
 

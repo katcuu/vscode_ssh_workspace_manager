@@ -8,6 +8,9 @@ test('Git repository URLs produce safe remote destination names and shell argume
   const https = parseGitRepositoryUrl('https://git.example.test/team/My%20Repo.git');
   assert.equal(https.name, 'My Repo');
   assert.equal(gitCloneDestination('/srv/work spaces', https), '/srv/work spaces/My Repo');
+  assert.deepEqual(parseGitRepositoryUrl('http://192.0.2.1:8080/team/repo.git'), {
+    url: 'http://192.0.2.1:8080/team/repo.git', host: '192.0.2.1', name: 'repo', protocol: 'http'
+  });
 
   const command = gitCloneCommand("https://example.test/team/a'b.git", "/srv/work/a'b");
   assert.match(command, /^stty -echo 2>\/dev\/null \|\| :; LC_ALL=C GIT_TERMINAL_PROMPT=1 GIT_ASKPASS= git -c credential\.helper= clone --progress --/);
@@ -16,10 +19,13 @@ test('Git repository URLs produce safe remote destination names and shell argume
   assert.doesNotMatch(command, /token|password/i);
 });
 
-test('Git repository URLs reject embedded credentials, insecure transports and unsafe names', () => {
+test('Git repository URLs reject embedded credentials, unsupported transports and unsafe names', () => {
   for (const url of [
     'https://user:secret@example.test/team/repo.git',
-    'http://example.test/team/repo.git',
+    'http://user:secret@example.test/team/repo.git',
+    'http://example.test/team/repo.git?token=secret',
+    'http://example.test/team/%2e%2e%2Foutside.git',
+    'ftp://example.test/team/repo.git',
     'file://example.test/team/repo.git',
     'https://example.test/team/repo.git?token=secret',
     'https://example.test/team/.git',
@@ -33,6 +39,10 @@ test('Git prompts distinguish HTTPS credentials, SSH passphrases and unknown hos
     { type: 'username', target: 'https://github.com' });
   assert.deepEqual(parseGitPrompt("Password for 'https://dev@github.com': ", 'https'),
     { type: 'password', target: 'https://dev@github.com' });
+  assert.deepEqual(parseGitPrompt("Username for 'http://git.example.test:8080': ", 'http'),
+    { type: 'username', target: 'http://git.example.test:8080' });
+  assert.deepEqual(parseGitPrompt("Password for 'http://dev@git.example.test:8080': ", 'http'),
+    { type: 'password', target: 'http://dev@git.example.test:8080' });
   assert.deepEqual(parseGitPrompt("git@git.example.test's password: ", 'ssh'),
     { type: 'ssh-password', username: 'git', target: 'git.example.test' });
   assert.equal(parseGitPrompt("git@git.example.test's password: ", 'https'), undefined);

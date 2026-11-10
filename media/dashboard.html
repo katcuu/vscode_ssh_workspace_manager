@@ -43,24 +43,25 @@
         <div class="section-heading"><div><h2>克隆 Git 仓库到本机</h2><p class="muted">使用本机 Git、SSH key / agent 和 known_hosts。</p></div><button id="selectLocalCloneParent">选择父文件夹</button></div>
         <p id="localCloneParent" class="clone-parent muted">尚未选择父文件夹</p>
         <label for="localRepositoryUrl">Git 仓库地址</label>
-        <div class="clone-input-row"><input id="localRepositoryUrl" type="text" placeholder="git@github.com:team/project.git 或 https://…" autocomplete="url"><button id="cloneLocalRepository" class="primary">克隆到本机</button></div>
+        <div class="clone-input-row"><input id="localRepositoryUrl" type="text" placeholder="SSH、https://… 或 http://…" autocomplete="url"><button id="cloneLocalRepository" class="primary">克隆到本机</button></div>
         <p id="localCloneDestinationHint" class="muted">选择父文件夹后，将按仓库名在本机创建子目录。</p>
         <div id="localCloneProgress" class="clone-progress" role="status" hidden><div><span id="localCloneMessage"></span><button id="cancelLocalClone">取消</button></div><progress id="localClonePercent" max="100" value="0" hidden></progress></div>
-        <p class="muted footnote">SSH 使用本机密钥 / agent 和 known_hosts；HTTPS 凭据及私钥口令通过 VS Code 提示框临时输入，不会保存。</p>
+        <p class="muted footnote">SSH 使用本机密钥 / agent 和 known_hosts；凭据通过 VS Code 提示框临时输入，不会保存。HTTP 未加密，请仅在可信网络使用。</p>
       </section>
       <section id="browser" class="browser" hidden>
         <div class="section-heading"><div><h2>打开新文件夹</h2><p id="browseServer" class="muted">先选择一台服务器</p></div><div class="actions"><button id="connect" class="primary">连接并浏览</button><button id="disconnect">取消 / 断开</button></div></div>
         <p id="connectionStatus" role="status" class="connection">未连接</p>
         <div class="pathbar"><button id="up" aria-label="上一级">↑</button><input id="path" placeholder="输入远程绝对路径；连接前也可修改，留空使用默认目录" aria-label="远程绝对路径"><button id="go">前往</button><button id="refresh">刷新</button></div>
         <div class="browse-options"><nav id="breadcrumbs" aria-label="路径导航"></nav><label><input id="showHidden" type="checkbox"> 隐藏目录</label></div>
+        <div class="directory-tools"><div class="actions"><button id="createDirectory" title="在当前浏览路径下新建子文件夹">新建文件夹</button><button id="deleteDirectory" title="删除选中的子文件夹，需两次确认">删除选中文件夹</button></div><span id="directoryOperationStatus" class="muted" role="status" aria-live="polite" hidden></span></div>
         <div id="directories" class="directories" aria-label="远程文件夹列表"><p class="empty">连接后在这里浏览服务端文件夹。单击选中，双击进入。</p></div>
         <div class="open-target"><span class="muted">将打开</span><code id="target">—</code><div class="actions"><button id="saveTarget">☆ 收藏</button><button id="openCurrent">当前窗口打开</button><button id="openNew" class="primary">新窗口打开</button></div></div>
         <div class="clone-tools">
           <label for="repositoryUrl">Git 仓库地址</label>
-          <div class="clone-input-row"><input id="repositoryUrl" type="text" placeholder="git@github.com:team/project.git 或 https://…" autocomplete="url"><button id="cloneRepository" class="primary">克隆到此目录</button></div>
+          <div class="clone-input-row"><input id="repositoryUrl" type="text" placeholder="SSH、https://… 或 http://…" autocomplete="url"><button id="cloneRepository" class="primary">克隆到此目录</button></div>
           <p id="cloneDestinationHint" class="muted">连接并选择一个父目录后，将按仓库名创建子目录。</p>
           <div id="cloneProgress" class="clone-progress" role="status" hidden><div><span id="cloneMessage"></span><button id="cancelClone">取消</button></div><progress id="clonePercent" max="100" value="0" hidden></progress></div>
-          <p class="muted footnote">HTTPS 凭据会通过加密 SSH 连接发送给所选 Linux 服务器，仅用于本次克隆，不会保存。GitHub 请使用访问令牌。</p>
+          <p class="muted footnote">凭据通过加密 SSH 连接临时发送给 Linux 服务器，不会保存。服务器到 HTTP 仓库的连接未加密，请仅在可信网络使用；GitHub 请使用访问令牌。</p>
         </div>
         <p class="muted footnote">优先使用密钥 / agent，必要时提示输入密码。打开文件夹时，Remote SSH 可能再次请求认证。</p>
       </section>

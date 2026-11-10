@@ -35,6 +35,17 @@ function isMissingPath(error: unknown): boolean {
   return false;
 }
 
+function folderNameError(name: string): string | undefined {
+  if (!name.trim() || name !== name.trim()) return '请输入文件夹名称，首尾不能有空格。';
+  if (name === '.' || name === '..' || /[\\/\x00-\x1f\x7f]/.test(name)) return '只能输入一个文件夹名称，不能包含斜杠或相对路径。';
+  if (Buffer.byteLength(name, 'utf8') > 255) return '文件夹名称过长，请缩短后重试。';
+  return undefined;
+}
+
+function httpCredentialNotice(target: string): string {
+  return /^http:\/\//i.test(target) ? '注意：HTTP 未加密，账号和密码 / 令牌会明文传输到 Git 服务器；请确认网络可信。' : '';
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   manager = new WorkspaceManager(context);
   context.subscriptions.push(manager,
@@ -73,6 +84,7 @@ class WorkspaceManager implements vscode.Disposable {
   private connection?: AbortController;
   private cloneController?: AbortController;
   private deletingFolderId?: string;
+  private directoryOperation = false;
   private cloneSequence = 0;
   private cloneScope?: 'remote' | 'local';
   private cloneProgress?: { message: string; phase?: string; percent?: number; current?: number; total?: number; canceling?: boolean };
@@ -167,6 +179,7 @@ class WorkspaceManager implements vscode.Disposable {
       browsePaths: data.browsePaths, selectedAlias: this.selectedAlias, selectedView: this.selectedView,
       initialPath: this.lastBrowsePath || '',
       localCloneParent: this.localCloneParent,
+      directoryBusy: this.directoryOperation,
       cloneResult: this.cloneResult || null,
       cloneOperation: this.cloneController && this.cloneScope
         ? { scope: this.cloneScope, ...this.cloneProgress } : null,
@@ -351,6 +364,7 @@ class WorkspaceManager implements vscode.Disposable {
     switch (message.type) {
       case 'ready': case 'refreshServers': await this.snapshot(); return;
       case 'connect': {
+        if (this.directoryOperation) throw new Error('请等待文件夹操作完成后再连接。');
         const alias = this.requireAlias(message.alias);
         if (alias !== this.selectedAlias) throw new Error('服务器已切换，请重新连接。');
         await this.connectAndBrowse(alias, typeof message.path === 'string' ? message.path : undefined); return;
@@ -365,7 +379,7 @@ class WorkspaceManager implements vscode.Disposable {
         if (alias !== this.selectedAlias || typeof message.path !== 'string' || typeof message.url !== 'string') {
           throw new Error('请先选择服务器目录并输入 Git 仓库地址。');
         }
-        if (this.deletingFolderId) throw new Error('文件夹删除完成前不能开始远程克隆。');
+        if (this.deletingFolderId || this.directoryOperation) throw new Error('文件夹操作完成前不能开始远程克隆。');
         await this.cloneRepository(alias, normalizeRemotePath(message.path), message.url); return;
       }
       case 'selectLocalCloneParent': {
@@ -379,6 +393,7 @@ class WorkspaceManager implements vscode.Disposable {
         return;
       }
       case 'cloneLocal': {
+        if (this.directoryOperation || this.deletingFolderId) throw new Error('请等待文件夹操作完成后再克隆。');
         if (this.selectedView !== 'local' || typeof message.parentPath !== 'string' || typeof message.url !== 'string') {
           throw new Error('请先选择本机父文件夹并输入 Git 仓库地址。');
         }
@@ -399,9 +414,16 @@ class WorkspaceManager implements vscode.Disposable {
         this.post({ type: 'cloneResult', result: null });
         return;
       case 'browse': {
+        if (this.directoryOperation) throw new Error('请等待文件夹操作完成后再浏览。');
         const alias = this.requireAlias(message.alias);
         if (alias !== this.selectedAlias) return;
         await this.list(alias, message.path); return;
+      }
+      case 'createDirectory': case 'deleteDirectory': {
+        const alias = this.requireAlias(message.alias);
+        try { await this.mutateBrowserDirectory(message.type, alias, message.parentPath, message.path); }
+        finally { if (!this.directoryOperation) this.post({ type: 'directoryOperation', alias, busy: false }); }
+        return;
       }
       case 'saveFolder': {
         const alias = this.requireAlias(message.alias);
@@ -535,7 +557,7 @@ class WorkspaceManager implements vscode.Disposable {
   }
 
   private async removeFolderRecord(id: string): Promise<void> {
-    if (this.deletingFolderId) throw new Error('已有文件夹删除任务正在进行。');
+    if (this.deletingFolderId || this.directoryOperation) throw new Error('已有文件夹操作正在进行。');
     const data = await this.store.read();
     const folder = data.folders.find(value => value.id === id);
     if (!folder) throw new Error('这条项目记录已被移除，请刷新列表。');
@@ -566,7 +588,7 @@ class WorkspaceManager implements vscode.Disposable {
     if (!latest || latest.kind !== folder.kind || latest.path !== folder.path) {
       throw new Error('项目记录在确认期间已变化，未删除文件夹。请刷新后重试。');
     }
-    if (this.deletingFolderId) throw new Error('已有文件夹删除任务正在进行。');
+    if (this.deletingFolderId || this.directoryOperation || this.cloneController) throw new Error('已有文件夹操作或 Git 克隆任务正在进行。');
     this.deletingFolderId = id;
     try {
       const folderExisted = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
@@ -585,8 +607,10 @@ class WorkspaceManager implements vscode.Disposable {
   }
 
   private async deletePhysicalFolder(folder: FolderTarget, progress: vscode.Progress<{ message?: string }>): Promise<boolean> {
-    if (folder.kind === 'local') {
-      const uri = vscode.Uri.file(folder.path);
+    const current = this.currentRemote();
+    if (folder.kind === 'local' || current?.alias === folder.alias) {
+      const uri = folder.kind === 'local' ? vscode.Uri.file(folder.path)
+        : vscode.Uri.from({ scheme: 'vscode-remote', authority: folder.authority, path: folder.path });
       let stat: vscode.FileStat;
       try { stat = await vscode.workspace.fs.stat(uri); }
       catch (error) { if (isMissingPath(error)) return false; throw error; }
@@ -611,6 +635,101 @@ class WorkspaceManager implements vscode.Disposable {
       return deleted > 0;
     } finally {
       if (ownedSession) session.close();
+    }
+  }
+
+  private async mutateBrowserDirectory(action: 'createDirectory' | 'deleteDirectory', alias: string,
+    rawParent: unknown, rawTarget: unknown): Promise<void> {
+    if (this.directoryOperation || this.deletingFolderId || this.cloneController) {
+      throw new Error('请等待当前文件夹操作或 Git 克隆完成后再试。');
+    }
+    const parent = normalizeRemotePath(rawParent);
+    const generation = this.generation;
+    const checkContext = () => {
+      if (this.disposed || generation !== this.generation || this.selectedView !== 'server'
+        || this.selectedAlias !== alias || this.lastBrowsePath !== parent) {
+        throw new Error('浏览位置或连接已变化，未继续操作。请重新选择目录后再试。');
+      }
+    };
+    checkContext();
+    this.directoryOperation = true;
+    this.post({ type: 'directoryOperation', alias, busy: true,
+      message: action === 'createDirectory' ? '正在新建文件夹…' : '正在处理选中的文件夹…' });
+    try {
+      await this.verifyDirectory(alias, parent);
+      checkContext();
+      if (action === 'createDirectory') {
+        const name = await vscode.window.showInputBox({ title: `${alias} · 新建文件夹`,
+          prompt: `在 ${parent} 下创建一个子文件夹。`, placeHolder: '文件夹名称', ignoreFocusOut: true,
+          validateInput: folderNameError });
+        if (name === undefined) return;
+        const invalid = folderNameError(name);
+        if (invalid) throw new Error(invalid);
+        const destination = path.posix.join(parent, name);
+        checkContext();
+        await this.verifyDirectory(alias, parent);
+        checkContext();
+        const current = this.currentRemote();
+        if (current?.alias === alias) {
+          const uri = vscode.Uri.from({ scheme: 'vscode-remote', authority: current.authority, path: destination });
+          let exists = false;
+          try { await vscode.workspace.fs.stat(uri); exists = true; }
+          catch (error) { if (!isMissingPath(error)) throw error; }
+          if (exists) throw new Error('该名称已存在，请使用其他文件夹名称。');
+          await vscode.workspace.fs.createDirectory(uri);
+        } else {
+          if (this.sessionAlias !== alias || !this.session?.available) throw new Error('后台连接已断开，请重新连接。');
+          await this.session.createDirectory(destination);
+        }
+        if (generation === this.generation && this.selectedAlias === alias) await this.list(alias, parent, true, destination);
+        this.post({ type: 'notice', message: `已新建文件夹：${alias} : ${destination}` });
+      } else {
+        const target = normalizeRemotePath(rawTarget);
+        if (target === '/' || target === parent || path.posix.dirname(target) !== parent) {
+          throw new Error('请在当前列表中选中一个子文件夹，不能删除当前目录或根目录。');
+        }
+        const result = await this.readDirectory(alias, parent);
+        checkContext();
+        const entry = result.entries.find(value => value.path === target);
+        if (!entry) {
+          await this.list(alias, parent, true);
+          this.post({ type: 'notice', message: `选中的文件夹已不存在或不再是文件夹，已刷新列表：${target}` });
+          return;
+        }
+        const linkNote = entry.symlink ? '这是符号链接，只删除链接本身，不删除链接指向的内容。' : '将永久删除此文件夹及其中全部内容。';
+        const first = await vscode.window.showWarningMessage(`删除选中的文件夹“${entry.name}”？`, { modal: true,
+          detail: `服务器：${alias}\n完整路径：\n${target}\n\n${linkNote}`
+        }, '继续删除');
+        if (first !== '继续删除') return;
+        checkContext();
+        const second = await vscode.window.showWarningMessage('再次确认：永久删除选中的文件夹？', { modal: true,
+          detail: `完整路径：\n${target}\n\n服务器：${alias}\n${linkNote}\n对应目录及子目录的项目记录也会移除。此操作无法撤销。`
+        }, '确认删除文件夹');
+        if (second !== '确认删除文件夹') return;
+        checkContext();
+        const existed = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
+          title: `正在删除 ${alias} 上的文件夹`, cancellable: false
+        }, progress => this.deletePhysicalFolder(makeFolder(alias, target), progress));
+        await this.store.update(data => {
+          data.folders = data.folders.filter(folder => folder.kind !== 'remote' || folder.alias !== alias
+            || !(folder.path === target || (!entry.symlink && folder.path.startsWith(`${target}/`))));
+        });
+        if (this.cloneResult?.alias === alias && this.cloneResult.path
+          && (this.cloneResult.path === target || (!entry.symlink && this.cloneResult.path.startsWith(`${target}/`)))) {
+          this.cloneResult = undefined;
+        }
+        this.watchStore(); await this.snapshot();
+        if (generation === this.generation && this.selectedAlias === alias) await this.list(alias, parent, true);
+        this.post({ type: 'notice', message: existed ? `已删除文件夹并清理对应项目记录：${alias} : ${target}`
+          : `文件夹已不存在，已清理对应项目记录：${alias} : ${target}` });
+      }
+    } catch (error) {
+      // A failed partial deletion or an externally removed parent must not leave a stale selection.
+      if (generation === this.generation && this.selectedAlias === alias) await this.list(alias, parent, true);
+      throw error;
+    } finally {
+      this.directoryOperation = false;
+      this.post({ type: 'directoryOperation', alias, busy: false });
     }
   }
 
@@ -676,12 +795,12 @@ class WorkspaceManager implements vscode.Disposable {
           controller.signal.addEventListener('abort', cancel, { once: true });
           if (controller.signal.aborted) token.cancel();
           try {
-            return await vscode.window.showInputBox({ title: 'Git HTTPS 用户名', prompt: `连接 ${target} 的 Git 用户名。`,
+            return await vscode.window.showInputBox({ title: 'Git HTTP / HTTPS 用户名', prompt: `连接 ${target} 的 Git 用户名。${httpCredentialNotice(target)}`,
               ignoreFocusOut: true, validateInput: value => value.trim() ? undefined : '请输入 Git 用户名。' }, token.token);
           } finally { controller.signal.removeEventListener('abort', cancel); token.dispose(); }
         },
         password: (target, username) => this.inputSecret('Git 密码或访问令牌',
-          `${target}${username ? ` · ${username}` : ''}。凭据会经加密 SSH 通道发送给 ${alias}，仅用于本次克隆，不会保存；GitHub 请使用访问令牌。`, controller.signal),
+          `${target}${username ? ` · ${username}` : ''}。凭据会经加密 SSH 通道发送给 ${alias}，仅用于本次克隆，不会保存；GitHub 请使用访问令牌。${httpCredentialNotice(target)}`, controller.signal),
         sshPassword: (target, username) => this.inputSecret('Git SSH 账号密码',
           `${username}@${target}。仅在 Git 服务器要求 SSH 密码时输入；凭据经加密 SSH 通道临时发送，不会保存。`, controller.signal),
         passphrase: keyPath => this.inputSecret('Git SSH 私钥口令', `解锁 Linux 服务器上的私钥 ${keyPath}；口令不会保存。`, controller.signal)
@@ -740,12 +859,12 @@ class WorkspaceManager implements vscode.Disposable {
             controller.signal.addEventListener('abort', cancel, { once: true });
             if (controller.signal.aborted) token.cancel();
             try {
-              return await vscode.window.showInputBox({ title: 'Git HTTPS 用户名', prompt: `连接 ${target} 的 Git 用户名。`,
+              return await vscode.window.showInputBox({ title: 'Git HTTP / HTTPS 用户名', prompt: `连接 ${target} 的 Git 用户名。${httpCredentialNotice(target)}`,
                 ignoreFocusOut: true, validateInput: value => value.trim() ? undefined : '请输入 Git 用户名。' }, token.token);
             } finally { controller.signal.removeEventListener('abort', cancel); token.dispose(); }
           },
           password: (target, username) => this.inputSecret('Git 密码或访问令牌',
-            `${target}${username ? ` · ${username}` : ''}。凭据通过本机 Git askpass 临时传递，仅用于本次克隆，不会保存；GitHub 请使用访问令牌。`, controller.signal),
+            `${target}${username ? ` · ${username}` : ''}。凭据通过本机 Git askpass 临时传递，仅用于本次克隆，不会保存；GitHub 请使用访问令牌。${httpCredentialNotice(target)}`, controller.signal),
           sshPassword: (target, username) => this.inputSecret('Git SSH 账号密码',
             `${username}@${target}。仅在 Git 服务器要求 SSH 密码时输入；凭据仅用于本次克隆，不会保存。`, controller.signal),
           passphrase: keyPath => this.inputSecret('本机 Git SSH 私钥口令', `解锁本机私钥 ${keyPath}；口令不会保存。`, controller.signal)
@@ -827,7 +946,7 @@ class WorkspaceManager implements vscode.Disposable {
     return { entries: await this.session.listDirectories(remotePath), backend: 'SFTP 后台浏览' };
   }
 
-  private async list(alias: string, remotePath: unknown, recoverMissing = false): Promise<void> {
+  private async list(alias: string, remotePath: unknown, recoverMissing = false, selectedPath?: string): Promise<void> {
     const generation = this.generation, sequence = ++this.requestSequence;
     this.post({ type: 'status', message: '正在读取目录…', busy: true, connected: true });
     try {
@@ -847,7 +966,7 @@ class WorkspaceManager implements vscode.Disposable {
       await this.store.update(data => { data.browsePaths[alias] = normalized; });
       this.watchStore();
       if (generation !== this.generation || sequence !== this.requestSequence) return;
-      this.post({ type: 'browseResult', alias, path: normalized, ...result });
+      this.post({ type: 'browseResult', alias, path: normalized, selectedPath, ...result });
       if (normalized !== requested) this.post({ type: 'notice', message: `上次浏览的路径 ${requested} 已不存在或不再是文件夹，已切换到 ${normalized}。` });
     } catch (error) {
       if (generation !== this.generation || sequence !== this.requestSequence) return;

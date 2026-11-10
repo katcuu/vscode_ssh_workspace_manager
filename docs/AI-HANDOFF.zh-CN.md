@@ -1,6 +1,6 @@
 # SSH Workspace Manager 开发交接手册
 
-维护日期：2026-11-09。正式版 `0.2.3` 已发布，包含远程浏览失效路径恢复、实际文件夹删除及顶部提示关闭按钮。用户确认本轮测试包通过后，代码已提交并推送至 `main`，标签 `v0.2.3` 指向 `9573ab95ca48ec997ccf360cb9b5bf7d95ce5204`。三平台 CI、GitHub Release 和 Marketplace OIDC 发布均成功；Marketplace 官方查询确认 `0.2.3` 为 `validated`。具体证据见本文的 `0.2.3` 发布验证记录。
+维护日期：2026-11-10。用户已确认 HTTP 克隆、目录新建 / 删除测试通过，并授权提交及正式发布；当前准备 `0.3.0`，尚未完成本轮推送和市场发布。上一正式版为 `0.2.3`；其三平台 CI、GitHub Release 和 Marketplace OIDC 发布均成功，具体证据见本文的 `0.2.3` 发布验证记录。当前状态需以本轮发布验证记录为准。
 
 本手册用于让后续 AI 或开发者独立接手功能开发、定位问题和验证交付。入口规则见 [AGENTS.md](../AGENTS.md)，使用说明见 [README](../README.md)。具体行为和命令以当前源码、`package.json` 为准；修改实现时同步更新本文。
 
@@ -16,11 +16,11 @@
 | --- | --- |
 | 仓库 | [katcuu/vscode_ssh_workspace_manager](https://github.com/katcuu/vscode_ssh_workspace_manager) |
 | 扩展 / 发布者 | `katcuu.ssh-workspace-manager` / `katcuu`，MIT |
-| 版本与最低 API | 正式版 `0.2.3`；VS Code `^1.99.0` |
+| 版本与最低 API | 待发布 `0.3.0`，上一正式版 `0.2.3`；VS Code `^1.99.0` |
 | 平台 | macOS / Windows 客户端；Linux SSH 服务器 |
-| 本机交付 | `0.2.3` VSIX 已打包并校验，隔离扩展宿主基础 smoke 通过；运行资源与用户确认的测试包一致 |
+| 本机交付 | `0.3.0` VSIX 已打包并校验，运行资源与用户确认的 HTTP / 目录操作测试包一致；隔离宿主基础 smoke 通过 |
 | 市场 | [GitHub Release v0.2.3](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.3) 已发布 VSIX；Marketplace 官方查询接口确认 `0.2.3` 为 `validated`；[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42574215684) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
-| 自动验证 | Node.js 22.23.4 下类型检查、37 项测试、构建、打包通过；隔离 VS Code 1.139.0 扩展宿主 smoke 通过；v0.2.3 标签 CI 的 macOS / Windows / Ubuntu 检查全部通过 |
+| 自动验证 | `0.3.0` 在 Node.js 22.23.4 下类型检查、45 项测试、构建、打包通过；隔离 VS Code 1.139.0 扩展宿主基础 smoke 通过；三平台 CI 待完成 |
 
 市场状态是交接时的记录，不是实时查询结果。继续发布前，核对 [Marketplace](https://marketplace.visualstudio.com/items?itemName=katcuu.ssh-workspace-manager) 与 [发布者管理页](https://marketplace.visualstudio.com/manage/publishers/katcuu)。不要把 GitHub 推送、本机安装或用户看到旧市场版本误认为发布失败。
 
@@ -59,17 +59,19 @@
 
 具体服务器页面可以“连接并浏览”：单击选中目录、双击进入、返回上级、面包屑跳转、输入绝对路径，支持隐藏目录和指向目录的符号链接。没有选中子目录时，收藏或打开的对象是当前浏览目录。
 
+浏览区新增 `createDirectory` / `deleteDirectory` 消息，扩展校验服务器、当前路径、generation 和操作锁。新建用原生输入框收集单个目录名，拒绝路径分隔符、相对路径、控制字符、首尾空格及超长名称；在当前浏览路径下创建，刷新后通过 `browseResult.selectedPath` 选中新目录（隐藏目录会同时显示）。删除只允许当前列表的直接子目录，连续两个原生模态确认均显示服务器和完整路径；成功后通过 Store 移除同服务器下对应路径及子目录的记录，符号链接只删链接和其本身的记录。缺失路径、取消、权限失败与断开竞争均释放 `directoryOperation` 状态；目录操作和克隆互斥，不预写历史。当前窗口已通过 Remote SSH 连接相同服务器时，创建 / 删除复用 `workspace.fs`；否则复用 SFTP 的 `mkdir` 和不跟随链接的递归删除。
+
 认证优先 agent / 密钥，没有可用凭据时使用 VS Code 原生密码输入。后台 SFTP 与 Remote SSH 是不同连接，正式打开时可能再次认证。当前没有可复用的公开 Remote SSH 接口来保证任意未连接服务器在原页面后台完成目录浏览，因此保留独立 SFTP 路线。
 
 目录浏览区还可把 Git 仓库克隆到所选远程父目录下，以仓库名创建子目录。成功后浏览器刷新并进入克隆目录，可直接打开当前 / 新窗口；页面顶部保留克隆进度或最终结果，切换左侧视图后仍可查看。只有 VS Code 实际打开工作区后才记录历史。Git 必须安装在 Linux 服务器上，且服务器需能访问仓库主机。
 
-克隆在所选服务器的 SSH 命令通道内运行 Git，不依赖 Webview 或 SFTP 写文件。即使当前目录列表通过 Remote SSH 的 `workspace.fs` 读取，克隆仍使用独立 `ssh2` 会话 / exec channel。地址限定 SSH / HTTPS，拒绝嵌入式账号、密码、令牌和查询参数；目标名由解码后的仓库路径末段安全派生，命令参数使用 POSIX shell 单引号转义。目标目录已存在时由 Git 报错，不覆盖既有内容。克隆启动后先显示不定进度条和可用的状态文字，Git 输出对象百分比后切换为定量进度。
+克隆在所选服务器的 SSH 命令通道内运行 Git，不依赖 Webview 或 SFTP 写文件。即使当前目录列表通过 Remote SSH 的 `workspace.fs` 读取，克隆仍使用独立 `ssh2` 会话 / exec channel。地址限定 SSH / HTTPS / HTTP，拒绝嵌入式账号、密码、令牌和查询参数；目标名由解码后的仓库路径末段安全派生，命令参数使用 POSIX shell 单引号转义。目标目录已存在时由 Git 报错，不覆盖既有内容。克隆启动后先显示不定进度条和可用的状态文字，Git 输出对象百分比后切换为定量进度。
 
-SSH 仓库优先使用 Linux 服务器的 key / agent；加密 key 的口令或 Git 服务器要求的 SSH 账号密码由 VS Code 原生密码输入框按需收集。HTTPS 先在 VS Code 提示用户名，再提示密码 / 访问令牌；禁用 Git credential helper 并设置 `GIT_TERMINAL_PROMPT`，凭据只经 SSH 通道交互提交、不写入命令、Webview、存储或日志。PTY 先执行 `stty -echo`，避免认证输入被终端回显。用户取消、关闭页面或显式断开连接时中断远程命令；单纯切换管理页视图会继续克隆。Git 可提供的阶段与对象百分比显示在管理页顶部和克隆控件旁。
+SSH 仓库优先使用 Linux 服务器的 key / agent；加密 key 的口令或 Git 服务器要求的 SSH 账号密码由 VS Code 原生密码输入框按需收集。HTTP / HTTPS 按需在 VS Code 提示用户名，再提示密码 / 访问令牌；HTTP 凭据输入框说明其到 Git 服务器的连接未加密；禁用 Git credential helper 并设置 `GIT_TERMINAL_PROMPT`，凭据只经 SSH 通道交互提交、不写入命令、Webview、存储或日志。PTY 先执行 `stty -echo`，避免认证输入被终端回显。用户取消、关闭页面或显式断开连接时中断远程命令；单纯切换管理页视图会继续克隆。Git 可提供的阶段与对象百分比显示在管理页顶部和克隆控件旁。
 
 克隆源站的 SSH 主机密钥使用 Linux 服务器的 `known_hosts`。若 Git SSH 提示未知主机，扩展发送拒绝并中止，要求用户在服务器上核对指纹并预先建立信任；不能自动接受未知密钥。HTTPS 凭据输入取消、权限错误、目标已存在、无 Git、SSH 认证或 known_hosts 问题均给出脱敏摘要。
 
-本地文件视图也支持 Git 克隆：先用 VS Code 原生文件夹选择器选择本机父目录，扩展在本机启动 `git clone` 并按仓库名创建子目录；本机需安装 Git 并确保在 PATH 中。Git 进程继承本机 Git / OpenSSH 配置与 agent 环境，因此 SSH key、agent、SSH 配置和 `known_hosts` 都来自运行 VS Code 的电脑；Git 不在 Linux 服务器执行。HTTPS 用户名、密码 / 令牌、SSH 账号密码和加密 key 口令由原生输入框收集，通过随机 Unix socket 或 Windows named pipe 的短期 askpass 桥交给本机 Git，凭据不进入 Webview / Store / 命令参数。桥接器是打包资源 `media/git-askpass.cjs`，通过 `ELECTRON_RUN_AS_NODE` 启动 VS Code 自带的 Node runtime。关闭管理页或取消会终止本机 Git 并关闭 IPC endpoint；切换左侧视图不会取消克隆。
+本地文件视图也支持 Git 克隆：先用 VS Code 原生文件夹选择器选择本机父目录，扩展在本机启动 `git clone` 并按仓库名创建子目录；本机需安装 Git 并确保在 PATH 中。Git 进程继承本机 Git / OpenSSH 配置与 agent 环境，因此 SSH key、agent、SSH 配置和 `known_hosts` 都来自运行 VS Code 的电脑；Git 不在 Linux 服务器执行。HTTP / HTTPS 用户名、密码 / 令牌、SSH 账号密码和加密 key 口令由原生输入框收集，通过随机 Unix socket 或 Windows named pipe 的短期 askpass 桥交给本机 Git，凭据不进入 Webview / Store / 命令参数。`GIT_ASKPASS` 和 `SSH_ASKPASS` 均使用打包资源 `media/git-askpass.sh` / `.cmd` 的实际可执行文件路径，凭据桥为同目录 `media/git-askpass.cjs`，通过 `ELECTRON_RUN_AS_NODE` 启动 VS Code 自带的 Node runtime。不能把包含 Node 路径和参数的整段命令用作 `GIT_ASKPASS`；真实 Git 回归已复现其被当作文件名执行。关闭管理页或取消会终止本机 Git 并关闭 IPC endpoint；切换左侧视图不会取消克隆。
 
 本机克隆成功后通过 `CatalogStore.update()` 将目录加入本地列表；`makeLocalFolder()` 的 `lastOpenedAt` 保持 `null`，不能在克隆时写成打开历史。只有工作区事件观察到它实际打开后才由现有记录逻辑更新时间。取消或失败不会写入目录记录。页面顶部保留克隆状态、完整路径，并提供当前 / 新窗口打开；扩展启动后父目录选择默认回到本机 home，同一次扩展运行内通过 snapshot 保留所选路径及克隆结果。远程成功后把 `browsePaths[alias]` 更新到仓库目录；若原页面仍在该服务器视图，立即刷新进入仓库目录；切换出去后返回时，如果 SFTP 会话仍可用，也重新列出克隆目录。
 
@@ -171,11 +173,12 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 | 检查 | 覆盖范围 | 未覆盖 |
 | --- | --- | --- |
 | `test/core.test.ts`，8 个测试 | 本地 / 远程路径与 ID、去重、schema 迁移、Host / Include、known_hosts、并发存储与损坏保护、隐藏恢复、SSH 配置追加 | 原生 UI、真实公网连接 |
-| `test/dashboard.test.ts`，6 个测试 | 执行实际 dashboard.js，检查列表、排序、来源搜索、打开 ID 消息、删除 / 取消收藏区别、分栏比例、克隆状态跨视图恢复、路径和当前 / 新窗口打开消息、失效路径后的重连和恢复交互 | DOM 替身不能验证真实排版、点击焦点或 VS Code 窗口 |
-| `test/browsing.test.ts`，12 个测试 | 通过 VS Code API double 运行实际扩展 bundle 和 Webview 消息处理，验证失效路径恢复、取消竞争、仅删除记录、本机递归删除、取消二次确认、路径已被外部删除、文件替代目录、删除失败保留记录及根目录保护 | 不启动 VS Code UI，也不执行真实 SFTP；真实 SFTP 错误由协议测试覆盖 |
-| `test/gitClone.test.ts`，4 个测试 | SSH / HTTPS URL、凭据拒绝、目标名和 shell 转义、认证提示与 Git 进度解析 | 不连接公网 Git 服务 |
+| `test/dashboard.test.ts`，7 个测试 | 执行实际 dashboard.js，检查列表、排序、来源搜索、打开 ID 消息、删除 / 取消收藏区别、分栏比例、克隆状态跨视图恢复、路径和当前 / 新窗口打开消息、失效路径后的重连和恢复交互 | DOM 替身不能验证真实排版、点击焦点或 VS Code 窗口 |
+| `test/browsing.test.ts`，18 个测试 | 通过 VS Code API double 运行实际扩展 bundle 和 Webview 消息处理，验证目录新建 / 删除、两次确认、跨服务器记录隔离、新建不记历史、失效路径恢复、取消竞争、仅删除记录、本机递归删除、取消二次确认、路径已被外部删除、文件替代目录、删除失败保留记录及根目录保护 | 不启动 VS Code UI，也不执行真实 SFTP；真实 SFTP 错误由协议测试覆盖 |
+| `test/gitClone.test.ts`，4 个测试 | SSH / HTTPS / HTTP URL、凭据拒绝、目标名和 shell 转义、认证提示与 Git 进度解析 | 不连接公网 Git 服务 |
+| `test/httpClone.test.ts`，1 个测试 | 真实 Git 和本机 HTTP 服务验证匿名克隆、HTTP Basic 用户名 / 令牌认证、取消凭据输入、检出内容、凭据不写入仓库配置，以及带空格的 askpass 启动路径 | 不连接公网仓库或验证用户真实凭据 |
 | `test/localGitClone.test.ts`，3 个测试 | 通过本机 IPC endpoint 启动 askpass helper，检查秘密输入传输、取消响应和 Unix socket 清理；真实 OpenSSH 通过带空格的启动脚本 / helper 路径完成本地 SSH fixture 的密码认证 | 不连接公网 Git 服务，也不验证 Windows UI / 用户本机 agent |
-| `test/sftp.test.ts`，4 个测试 | 临时密钥和本地 SSH/SFTP 服务，验证公钥优先、密码回退、agent 不可用 / 空身份时继续回退、未知主机信任、变化主机密钥拒绝、加密 / 缺失密钥、目录 / 符号链接、错误与取消、诊断脱敏 | 用户实际 agent、跳板机、多因素认证、真实服务器环境 |
+| `test/sftp.test.ts`，4 个测试 | 临时密钥和本地 SSH/SFTP 服务，验证公钥优先、密码回退、agent 不可用 / 空身份时继续回退、未知主机信任、变化主机密钥拒绝、加密 / 缺失密钥、目录 / 符号链接、新建 / 重名 / 权限 / 缺失父目录、HTTP 远程克隆认证、错误与取消、诊断脱敏 | 用户实际 agent、跳板机、多因素认证、真实服务器环境 |
 | `scripts/vscode-smoke.cjs` | 真实宿主激活、命令、活动栏直接打开、单实例管理页、四种入口、特殊字符 URI | 不进行真实 Remote SSH 连接 |
 
 协议测试使用临时服务和临时密钥，不修改个人 SSH 配置。SFTP 协议测试需要本地监听端口；askpass 桥测试需要建立本机 Unix socket / Windows named pipe。若运行器禁止这些本机 IPC，记录环境限制，不能把协议测试改成跳过后声称全部通过。
@@ -209,6 +212,20 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 - Node.js 22.23.4 下类型检查、37 项测试和构建通过。VS Code 1.139.0 隔离宿主基础 smoke 通过，并在真实 Webview 中检查了宽 / 窄布局、长路径、鼠标关闭、Enter 关闭、新提示重新出现及错误样式重置；未连接真实 SSH 服务器或执行实际文件夹删除。
 - 用户要求自测通过后自动生成并提供 VSIX，规则已同步至 `AGENTS.md`、`CONTRIBUTING.md` 及本文。测试包沿用 `0.2.2`；没有提交、打标签或上架。
 - 已运行 `npm run package`；测试包 `artifacts/ssh-workspace-manager-0.2.2.vsix` 为 571283 字节，ZIP 完整性、包内版本、UI 宿主声明及 HTML / CSS / JS / bundle 与当前源码一致性检查通过。SHA-256 为 `d2212a2878c804301e6a929b6647ce32c17ec17512598ff6775ccd656cf5f063`。
+
+### HTTP 克隆与浏览区目录操作（2026-11-10，用户测试通过，准备随 0.3.0 发布）
+
+- 本机与远程克隆接受 HTTP 地址及端口，仍拒绝 URL 内嵌凭据、查询令牌和非法目录名；原生输入框按需处理 HTTP 账号和密码 / 令牌，提示明文传输。修复本机 `GIT_ASKPASS` 整段命令被当成文件名的问题，改为和 SSH 共用实际启动脚本。
+- “新建文件夹”在当前路径下创建并选中；“删除选中文件夹”只允许直接子目录，连续两次确认后删除，刷新并清理对应记录。按钮和克隆任务互斥，取消或失败均恢复可用状态。
+- 真实 Git + 隔离 HTTP 服务验证匿名克隆、账号认证、取消凭据、特殊字符 / 带空格的 helper 路径及凭据不持久化；真实 SSH/SFTP 协议夹具验证 mkdir、重名、权限错误、父目录缺失和 HTTP 远程认证提示。控制层测试覆盖新建不记历史、取消、根目录 / 越界目标、子树记录按服务器隔离和删除时路径消失。
+- 隔离 VS Code 1.139.0 扩展宿主基础 smoke 通过。复用实际 HTML / CSS / JS 的独立浏览器夹具检查约 1233px / 385px 内容宽度的按钮可用性、选中反馈、新建后选中及无横向溢出；这不是原生确认框或真实 Webview 的完整交互验收。桌面自动化未能选中隔离宿主窗口，未在用户真实服务器执行删除；Windows 实机仍需用户验收。
+- Node.js 22.23.4 下类型检查和 45 项自动测试通过。`npm run package` 的类型检查、构建和打包通过；VSIX 共 20 个文件，已核对 ZIP 完整性、版本、UI 宿主声明、包内界面 / bundle / askpass / 用户文档与源码一致及 Unix 启动脚本可执行位。开发阶段交付 `artifacts/ssh-workspace-manager-0.2.3-http-folders-test.vsix`，沿用 `0.2.3` 测试包版本，当时未提交、打标签或上架；用户随后确认 HTTP / 新建 / 删除测试通过，并授权发布 `0.3.0`。用户未说明本轮验收的具体系统，不将其记为 Windows 实机验证。
+
+### 0.3.0 发布准备（2026-11-10，尚未发布）
+
+- 用户确认采用 `A.B.C`：大功能或较大页面设计变化增加 `A` 并将 `B`、`C` 归零；新增小功能增加 `B` 并将 `C` 归零；Bug 修复增加 `C`。本轮新增 HTTP 克隆和目录操作，版本由 `0.2.3` 升至 `0.3.0`，规则同步至 AGENTS、CONTRIBUTING 与发布指南。
+- `package.json`、`package-lock.json` 与 CHANGELOG 已更新为 `0.3.0`。Node.js 22.23.4 下 45 项测试全部通过，`npm run package` 的类型检查、构建和 VSIX 生成通过；隔离 VS Code 1.139.0 宿主通过激活、活动栏直接打开、原生命令、四类侧栏入口及管理页单实例检查。本轮宿主不重复执行真实服务器连接或目录删除；用户已确认上一测试包的 HTTP / 新建 / 删除操作通过。
+- 本机正式 VSIX 为 574142 字节、20 个文件，SHA-256 为 `24ea90a2022ea42f19f37467c5b4a1a70f7079d3c27336856bcfe1c13c9bba0b`。ZIP 完整性、版本、UI 宿主声明、运行资源、askpass 可执行位和使用者文档与源码一致性检查通过；运行资源及 bundle 与用户确认的 `0.2.3-http-folders-test` 包逐字节相同。发布说明提取脚本已核对。主分支 / 标签 CI、GitHub Release 及 Marketplace 结果待实际完成后补记。
 
 ### 0.2.3 发布验证（2026-11-09，正式发布完成）
 
@@ -274,6 +291,8 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 
 ## 8. 打包、安装与市场发布
 
+正式版本遵循用户 2026-11-10 确认的 `A.B.C` 规则：大功能变更或较大页面设计变化递增 `A` 并将 `B`、`C` 归零；新增小功能递增 `B` 并将 `C` 归零；Bug 修复递增 `C`。同一发布取最高级别；规则、示例及命令集中见 [发布指南](RELEASE.zh-CN.md#版本号规则)。测试包保留当前版本，正式发布前再统一更新 manifest、锁文件、CHANGELOG 与 tag。
+
 GitHub Release 正文由 `scripts/release-notes.mjs` 从 CHANGELOG 对应版本提取，要求标题已填写发布日期；发布脚本验证 tag 与 manifest 版本一致。正式发布仍沿用 `ci.yml` 的 OIDC 认证，不需要本机保存 Marketplace 令牌。
 
 `README.md`、`CHANGELOG.md`、`PRIVACY.md` 是使用者文档。不要把 AI 接手过程、研究讨论、私人测试路径或内部待办塞进市场详情页。`.vscodeignore` 采用允许列表；AI 手册、AGENTS、测试、源码及开发文档均不打入 VSIX，运行时由 dist 提供。
@@ -286,7 +305,7 @@ Marketplace 自动发布已通过 Trusted Publishing 配置发布者 `katcuu`、
 
 ## 9. 后续任务如何交接
 
-已有需求已完成确认，后续修复不需要重新问一遍历史问题。对新功能先核对是否改变本地 / 远程范围、历史语义或实际文件操作，再就缺少的信息澄清。当前没有授权自动增加云同步、源码历史、远程写文件、跳板机实现或其他新范围。
+已有需求已完成确认，后续修复不需要重新问一遍历史问题。对新功能先核对是否改变本地 / 远程范围、历史语义或实际文件操作，再就缺少的信息澄清。当前没有授权自动增加云同步、源码历史、任意文件编辑、跳板机实现或其他新范围；已授权的远程写操作限于 Git 克隆、目录新建及用户二次确认的目录删除。
 
 可将以下内容连同仓库交给 AI：
 

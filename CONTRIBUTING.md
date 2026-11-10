@@ -22,6 +22,8 @@ VS Code 打开仓库后按 F5，启动独立扩展开发宿主。`npm run packag
 
 正式版本标签、GitHub Release 和 Marketplace 自动发布的操作方式见 [发布指南](docs/RELEASE.zh-CN.md)。
 
+正式版本按 `A.B.C` 递增：大功能变更或较大页面设计变化增加 `A`，同时把 `B`、`C` 归零；新增小功能增加 `B` 并将 `C` 归零；Bug 修复增加 `C`。一次发布包含多类变更时采用最高级别。版本号、锁文件根包版本、CHANGELOG 和 Git tag 必须一致。
+
 ## 结构
 
 - `src/extension.ts`：VS Code 生命周期、命令、工作区观察和管理页控制。

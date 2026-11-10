@@ -2,7 +2,7 @@
   "name": "ssh-workspace-manager",
   "displayName": "SSH Workspace Manager",
   "description": "管理本地与 SSH 项目文件夹，浏览远程目录，并在本机或服务器克隆 Git 仓库。",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "publisher": "katcuu",
   "license": "MIT",
   "icon": "media/icon.png",

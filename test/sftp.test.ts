@@ -66,13 +66,13 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
         channel.on('data', (chunk: Buffer) => {
           const input = chunk.toString();
           cloneInputs.push(input.trim());
-          if (input.includes('fixture-user')) channel.write("Password for 'https://fixture-user@example.test': ");
+          if (input.includes('fixture-user')) channel.write(`Password for '${info.command.includes("'http://") ? 'http' : 'https'}://fixture-user@example.test': `);
           if (input.includes('fixture-token')) {
             channel.write('Receiving objects:  72% (18/25), 1.30 MiB | 2.0 MiB/s\r');
             setImmediate(() => { channel.write('\nResolving deltas: 100% (2/2)\n'); channel.exit(0); channel.end(); });
           }
         });
-        channel.write("Username for 'https://example.test': ");
+        channel.write(`Username for '${info.command.includes("'http://") ? 'http' : 'https'}://example.test': `);
       });
       sshSession.on('sftp', acceptSftp => {
         const sftp = acceptSftp();
@@ -86,6 +86,12 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
           if (directories.has(value)) sftp.attrs(id, attrs());
           else if (value === '/home/test/source.ts') sftp.attrs(id, attrs(0o100644));
           else sftp.status(id, value.includes('denied') ? STATUS_CODE.PERMISSION_DENIED : STATUS_CODE.NO_SUCH_FILE);
+        });
+        sftp.on('MKDIR', (id, value) => {
+          if (value.includes('denied')) sftp.status(id, STATUS_CODE.PERMISSION_DENIED);
+          else if (directories.has(value)) sftp.status(id, STATUS_CODE.FAILURE);
+          else if (!directories.has(path.posix.dirname(value))) sftp.status(id, STATUS_CODE.NO_SUCH_FILE);
+          else { directories.add(value); sftp.status(id, STATUS_CODE.OK); }
         });
         sftp.on('LSTAT', (id, value) => {
           lstatPaths.push(value);
@@ -165,6 +171,11 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
   assert.equal(await session.deleteDirectory('/home/test/already-removed'), 0, 'a path deleted outside the extension is treated as an idempotent result');
   await assert.rejects(() => session.deleteDirectory('/home/test/source.ts'), /已不是文件夹/);
   await assert.rejects(() => session.deleteDirectory('/'), /不能删除根目录/);
+  await session.createDirectory('/home/test/新建 folder#%');
+  assert.equal(await session.isDirectory('/home/test/新建 folder#%'), true);
+  await assert.rejects(() => session.createDirectory('/home/test/新建 folder#%'), /已存在/);
+  await assert.rejects(() => session.createDirectory('/home/test/denied'), /没有权限/);
+  await assert.rejects(() => session.createDirectory('/missing/child'), /父文件夹已不存在/);
   const cloneProgress: GitCloneProgress[] = [];
   const cloneInputsSeen: string[] = [];
   const repositoryPath = await session.cloneRepository('/home/test/中文 code#%', 'https://example.test/team/workspace.git', {
@@ -182,6 +193,13 @@ test('real SSH/SFTP protocol: key first, password fallback, host trust, director
     'Credentials are entered over the SSH channel and never appear in the Git command');
   assert.ok(cloneProgress.some(progress => progress.phase === 'receiving' && progress.percent === 72), JSON.stringify(cloneProgress));
   assert.ok(cloneProgress.some(progress => progress.phase === 'resolving' && progress.percent === 100));
+  const httpPath = await session.cloneRepository('/home/test', 'http://example.test:8080/team/http-workspace.git', {
+    username: async target => { assert.equal(target, 'http://example.test'); return 'fixture-user'; },
+    password: async (target, username) => { assert.equal(target, 'http://fixture-user@example.test'); assert.equal(username, 'fixture-user'); return 'fixture-token'; },
+    sshPassword: async () => assert.fail('HTTP must not request SSH authentication'), passphrase: async () => undefined
+  }, new AbortController().signal, () => {});
+  assert.equal(httpPath, '/home/test/http-workspace');
+  assert.match(cloneCommands.at(-1) || '', /http:\/\/example.test:8080\/team\/http-workspace.git/);
 
   const sshPasswordPath = await session.cloneRepository('/home/test', 'git@example.test:team/ssh-password.git', {
     username: async () => undefined, password: async () => undefined,

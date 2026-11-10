@@ -5,7 +5,7 @@ import { normalizeRemotePath, RemoteEntry } from './model';
 import { ResolvedSshConfig } from './sshConfig';
 import { fingerprint, keyAlgorithm, readHostTrust } from './trust';
 import { SshDiagnostics, SshStage } from './sshDiagnostics';
-import { GitClonePrompts, GitCloneProgress, gitCloneCommand, gitCloneDestination, parseGitProgress, parseGitPrompt, parseGitRepositoryUrl, stripTerminalSequences } from './gitClone';
+import { GitClonePrompts, GitCloneProgress, GitRepository, gitCloneCommand, gitCloneDestination, parseGitProgress, parseGitPrompt, parseGitRepositoryUrl, stripTerminalSequences } from './gitClone';
 
 export interface ConnectionPrompts {
   password(alias: string): Promise<string | undefined>;
@@ -105,6 +105,24 @@ export class SftpSession {
     }));
     this.diagnostics.event('directory', 'listed', { directories: result.length });
     return result.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async createDirectory(path: string): Promise<void> {
+    if (this.closed) throw new Error('后台浏览连接已关闭，请重新连接。');
+    const directory = normalizeRemotePath(path);
+    if (directory === '/') throw new Error('根目录已存在，请输入子文件夹名称。');
+    this.touch();
+    this.diagnostics.event('directory', 'mkdir');
+    await timeout(new Promise<void>((resolve, reject) => {
+      this.sftp.mkdir(directory, error => {
+        if (!error) { resolve(); return; }
+        this.diagnostics.event('directory', 'mkdir-failed', {}, error);
+        const code = (error as Error & { code?: number }).code;
+        reject(new Error(code === 3 ? '没有权限在此路径下新建文件夹。'
+          : code === 2 ? '父文件夹已不存在，请刷新目录后重试。'
+            : '无法新建文件夹，名称可能已存在；请刷新并检查连接和目录权限。', { cause: error }));
+      });
+    }), 20000, () => this.close());
   }
 
   async deleteDirectory(path: string, onProgress: (deleted: number, currentPath: string) => void = () => {}): Promise<number> {
@@ -286,7 +304,7 @@ export class SftpSession {
     });
   }
 
-  private cloneFailure(output: string, protocol: 'ssh' | 'https', host: string): Error {
+  private cloneFailure(output: string, protocol: GitRepository['protocol'], host: string): Error {
     const text = stripTerminalSequences(output).toLowerCase();
     if (/command not found|git: not found|git: command not found/.test(text)) return new Error('Linux 服务器未安装 Git。');
     if (/destination path .* already exists|already exists and is not an empty directory/.test(text)) {
@@ -296,7 +314,7 @@ export class SftpSession {
       return new Error(`无法通过 SSH 访问 Git 仓库 ${host}。请检查 Linux 服务器上的 key/agent 或 SSH 账号密码；也可改用 HTTPS 地址并输入令牌。`);
     }
     if (/authentication failed|invalid username or password|terminal prompts disabled/.test(text)) {
-      return new Error(protocol === 'https' ? 'Git HTTPS 认证失败，请检查用户名和访问令牌后重试。' : 'Git SSH 认证失败，请检查 Linux 服务器上的 key/agent。');
+      return new Error(protocol !== 'ssh' ? `Git ${protocol.toUpperCase()} 认证失败，请检查用户名和密码 / 访问令牌后重试。` : 'Git SSH 认证失败，请检查 Linux 服务器上的 key/agent。');
     }
     if (/host key verification failed|authenticity of host/.test(text)) {
       return new Error(`Git 服务器 ${host} 的主机密钥校验失败。请在 Linux 服务器上核验并配置 known_hosts 后重试。`);

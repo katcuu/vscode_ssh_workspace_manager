@@ -25,6 +25,7 @@ async function waitFor(predicate: () => boolean, description: string): Promise<v
 
 async function browser(t: TestContext, initialPath = '/srv/projects/deleted', options: {
   localProject?: boolean; warningAnswers?: (string | undefined)[]; failLocalDelete?: boolean;
+  inputAnswers?: (string | undefined)[];
 } = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'ssh-manager-browser-'));
   const store = new CatalogStore(path.join(directory, 'storage'));
@@ -48,6 +49,9 @@ async function browser(t: TestContext, initialPath = '/srv/projects/deleted', op
   const messages: Record<string, any>[] = [];
   const commands = new Map<string, (...args: any[]) => unknown>();
   const warningCalls: unknown[][] = [];
+  const inputCalls: any[] = [];
+  const inputAnswers = [...(options.inputAnswers || [])];
+  const createCalls: string[] = [];
   const deleteCalls: { path: string; recursive?: boolean }[] = [];
   const progressCalls: unknown[] = [];
   const warningAnswers = [...(options.warningAnswers || [])];
@@ -65,10 +69,21 @@ async function browser(t: TestContext, initialPath = '/srv/projects/deleted', op
       if (!directories.has(uri.path)) throw fsError('FileNotFound');
       return { type: 2 };
     },
-    readDirectory: async () => [['next', 2]],
-    delete: async (uri: { path: string; fsPath?: string }, deleteOptions?: { recursive?: boolean }) => {
+    readDirectory: async (uri: { path: string }) => [...directories].filter(value => value !== '/' && path.posix.dirname(value) === uri.path)
+      .map(value => [path.posix.basename(value), 2] as [string, number]),
+    createDirectory: async (uri: { path: string }) => {
+      createCalls.push(uri.path); directories.add(uri.path);
+    },
+    delete: async (uri: { path: string; scheme?: string; fsPath?: string }, deleteOptions?: { recursive?: boolean }) => {
       deleteCalls.push({ path: uri.fsPath || uri.path, recursive: deleteOptions?.recursive });
       if (options.failLocalDelete) throw fsError('NoPermissions');
+      if (uri.scheme === 'vscode-remote') {
+        const failure = failures.get(uri.path);
+        if (failure) throw fsError(failure);
+        if (!directories.has(uri.path)) throw fsError('FileNotFound');
+        for (const value of directories) if (value === uri.path || value.startsWith(`${uri.path}/`)) directories.delete(value);
+        return;
+      }
       await rm(uri.fsPath || uri.path, { recursive: deleteOptions?.recursive, force: false });
     }
   };
@@ -95,6 +110,7 @@ async function browser(t: TestContext, initialPath = '/srv/projects/deleted', op
       createTreeView: () => ({ ...disposable(), visible: false, onDidChangeVisibility: disposable }),
       createStatusBarItem: () => ({ ...disposable(), show: noOp }), onDidChangeWindowState: disposable,
       showWarningMessage: async (...args: unknown[]) => { warningCalls.push(args); return warningAnswers.shift(); },
+      showInputBox: async (input: unknown) => { inputCalls.push(input); return inputAnswers.shift(); },
       withProgress: async (_options: unknown, task: (progress: { report(value: unknown): void }, token: unknown) => Promise<unknown>) =>
         task({ report: value => progressCalls.push(value) }, {}),
       createWebviewPanel: () => ({ reveal: noOp, dispose: () => close(), onDidDispose: (handler: () => void) => { close = handler; },
@@ -128,7 +144,7 @@ async function browser(t: TestContext, initialPath = '/srv/projects/deleted', op
     assert.fail(`Browser request did not settle: ${JSON.stringify(messages.slice(start))}`);
   };
   return { directories, failures, reads, messages, send, receive: (message: unknown) => receive(message), remoteFs,
-    store, originalFolders, localPath, localFolder, warningCalls, deleteCalls, progressCalls };
+    store, originalFolders, localPath, localFolder, warningCalls, deleteCalls, progressCalls, inputCalls, createCalls };
 }
 
 test('reconnecting after the saved directory is deleted uses the closest existing parent and persists it', async t => {
@@ -301,4 +317,104 @@ test('root directories are blocked before the second destructive confirmation', 
   assert.equal(ui.warningCalls.length, 1);
   assert.ok((await ui.store.read()).folders.some(value => value.id === root.id));
   assert.equal(ui.progressCalls.length, 0);
+});
+
+test('browser creates under the current path, selects the new folder and never records it as opened', async t => {
+  const ui = await browser(t, '/srv/projects', { inputAnswers: ['中文 code#%'] });
+  await ui.send({ type: 'connect', alias: 'dev' });
+  const start = ui.messages.length;
+  ui.receive({ type: 'createDirectory', alias: 'dev', parentPath: '/srv/projects' });
+  await waitFor(() => ui.messages.slice(start).some(value => value.type === 'directoryOperation' && !value.busy), 'mkdir should settle');
+  const result = ui.messages.slice(start).find(value => value.type === 'browseResult');
+  assert.equal(result?.selectedPath, '/srv/projects/中文 code#%');
+  assert.deepEqual(ui.createCalls, ['/srv/projects/中文 code#%']);
+  assert.deepEqual((await ui.store.read()).folders, ui.originalFolders);
+  assert.match(ui.inputCalls[0].prompt, /\/srv\/projects/);
+  for (const name of ['', ' ', '.', '..', '../bad', '/tmp/bad', 'a\\b', 'a\nb', ' bad', 'x'.repeat(256)]) {
+    assert.ok(ui.inputCalls[0].validateInput(name), name);
+  }
+  assert.equal(ui.inputCalls[0].validateInput('中文 code#%'), undefined);
+});
+
+test('browser mkdir cancellation, existing names and rejected names leave contents intact and release controls', async t => {
+  const ui = await browser(t, '/srv/projects', { inputAnswers: [undefined, 'exists', '../escape', 'valid'] });
+  ui.directories.add('/srv/projects/exists');
+  await ui.send({ type: 'connect', alias: 'dev' });
+  for (let i = 0; i < 4; i++) {
+    const start = ui.messages.length;
+    ui.receive({ type: 'createDirectory', alias: 'dev', parentPath: '/srv/projects' });
+    await waitFor(() => ui.messages.slice(start).some(value => value.type === 'directoryOperation' && !value.busy), 'mkdir controls should recover');
+  }
+  assert.deepEqual(ui.createCalls, ['/srv/projects/valid']);
+  assert.equal(ui.deleteCalls.length, 0);
+});
+
+test('browser deletion requires two confirmations, refreshes and removes only the matching server subtree records', async t => {
+  const ui = await browser(t, '/srv/projects', { warningAnswers: ['继续删除', '确认删除文件夹'] });
+  const target = '/srv/projects/remove-me';
+  ui.directories.add(target); ui.directories.add(`${target}/nested`);
+  await ui.store.update(data => { data.folders.push(makeFolder('dev', target), makeFolder('dev', `${target}/nested`),
+    makeFolder('dev', `${target}-other`), makeFolder('other-server', target)); });
+  await ui.send({ type: 'connect', alias: 'dev' });
+  const start = ui.messages.length;
+  ui.receive({ type: 'deleteDirectory', alias: 'dev', parentPath: '/srv/projects', path: target });
+  await waitFor(() => ui.messages.slice(start).some(value => value.type === 'directoryOperation' && !value.busy), 'deletion should settle');
+  assert.equal(ui.warningCalls.length, 2);
+  for (const args of ui.warningCalls) assert.match((args[1] as { detail: string }).detail, new RegExp(target));
+  assert.deepEqual(ui.deleteCalls, [{ path: target, recursive: true }]);
+  assert.equal(ui.directories.has(target), false);
+  const folders = (await ui.store.read()).folders;
+  assert.equal(folders.some(value => value.kind === 'remote' && value.alias === 'dev' && value.path === target), false);
+  assert.ok(folders.some(value => value.kind === 'remote' && value.alias === 'other-server' && value.path === target));
+  assert.ok(folders.some(value => value.path === `${target}-other`));
+  assert.equal(ui.messages.slice(start).find(value => value.type === 'browseResult')?.path, '/srv/projects');
+});
+
+test('browser deletion cancellation, missing targets, permissions and invalid targets remain recoverable', async t => {
+  for (const answers of [[undefined], ['继续删除', undefined], ['继续删除', '确认删除文件夹']]) {
+    const ui = await browser(t, '/srv/projects', { warningAnswers: answers, failLocalDelete: true });
+    const target = '/srv/projects/safe'; ui.directories.add(target);
+    await ui.send({ type: 'connect', alias: 'dev' });
+    for (const value of [target, '/srv/projects/missing', '/', '/srv/projects', '/outside/path']) {
+      const start = ui.messages.length;
+      ui.receive({ type: 'deleteDirectory', alias: 'dev', parentPath: '/srv/projects', path: value });
+      await waitFor(() => ui.messages.slice(start).some(message => message.type === 'directoryOperation' && !message.busy), 'delete controls should recover');
+      assert.ok(ui.directories.has(target));
+    }
+    assert.equal(ui.deleteCalls.length, answers.length === 2 && answers[1] ? 1 : 0);
+  }
+});
+
+test('disconnecting while the new-folder request verifies its parent prevents creation in a stale context', async t => {
+  const ui = await browser(t, '/srv/projects', { inputAnswers: ['unused'] });
+  await ui.send({ type: 'connect', alias: 'dev' });
+  let resolvePrompt!: (value: string) => void;
+  // Pause verification so cancellation can race with the pending operation.
+  const originalStat = ui.remoteFs.stat;
+  const waiting = new Promise<string>(resolve => { resolvePrompt = resolve; });
+  ui.remoteFs.stat = async uri => { await waiting; return originalStat(uri); };
+  const start = ui.messages.length;
+  ui.receive({ type: 'createDirectory', alias: 'dev', parentPath: '/srv/projects' });
+  await waitFor(() => ui.messages.slice(start).some(value => value.type === 'directoryOperation' && value.busy), 'operation should start');
+  await ui.send({ type: 'cancel' }); resolvePrompt('continue');
+  await waitFor(() => ui.messages.slice(start).some(value => value.type === 'directoryOperation' && !value.busy), 'operation should stop');
+  assert.deepEqual(ui.createCalls, []);
+});
+
+test('a folder removed after confirmation settles and cleans its stale record', async t => {
+  const ui = await browser(t, '/srv/projects', { warningAnswers: ['继续删除', '确认删除文件夹'] });
+  const target = '/srv/projects/race'; ui.directories.add(target);
+  await ui.store.update(data => { data.folders.push(makeFolder('dev', target)); });
+  await ui.send({ type: 'connect', alias: 'dev' });
+  const originalStat = ui.remoteFs.stat;
+  ui.remoteFs.stat = async uri => {
+    if (uri.path === target && ui.warningCalls.length === 2) ui.directories.delete(target);
+    return originalStat(uri);
+  };
+  const start = ui.messages.length;
+  ui.receive({ type: 'deleteDirectory', alias: 'dev', parentPath: '/srv/projects', path: target });
+  await waitFor(() => ui.messages.slice(start).some(value => value.type === 'directoryOperation' && !value.busy), 'missing confirmed target should settle');
+  assert.equal(ui.deleteCalls.length, 0);
+  assert.match(ui.messages.slice(start).find(value => value.type === 'notice')?.message, /已不存在/);
+  assert.equal((await ui.store.read()).folders.some(value => value.path === target), false);
 });
