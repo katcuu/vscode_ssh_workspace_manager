@@ -22,8 +22,10 @@ test('real Git clones public and authenticated HTTP repositories, and cancelled 
   if (process.platform !== 'win32') await chmod(launcher, 0o700);
   await mkdir(source);
   await run('git', ['init', source]);
+  // Keep the fixture independent of the runner's core.autocrlf setting.
+  await writeFile(path.join(source, '.gitattributes'), 'hello.txt -text\n');
   await writeFile(path.join(source, 'hello.txt'), 'HTTP clone fixture\n');
-  await run('git', ['-C', source, 'add', 'hello.txt']);
+  await run('git', ['-C', source, 'add', '.gitattributes', 'hello.txt']);
   await run('git', ['-C', source, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture']);
   const bare = path.join(root, 'repo.git');
   await run('git', ['clone', '--bare', source, bare]);

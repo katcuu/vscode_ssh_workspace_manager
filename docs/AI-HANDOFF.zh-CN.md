@@ -226,6 +226,7 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 - 用户确认采用 `A.B.C`：大功能或较大页面设计变化增加 `A` 并将 `B`、`C` 归零；新增小功能增加 `B` 并将 `C` 归零；Bug 修复增加 `C`。本轮新增 HTTP 克隆和目录操作，版本由 `0.2.3` 升至 `0.3.0`，规则同步至 AGENTS、CONTRIBUTING 与发布指南。
 - `package.json`、`package-lock.json` 与 CHANGELOG 已更新为 `0.3.0`。Node.js 22.23.4 下 45 项测试全部通过，`npm run package` 的类型检查、构建和 VSIX 生成通过；隔离 VS Code 1.139.0 宿主通过激活、活动栏直接打开、原生命令、四类侧栏入口及管理页单实例检查。本轮宿主不重复执行真实服务器连接或目录删除；用户已确认上一测试包的 HTTP / 新建 / 删除操作通过。
 - 本机正式 VSIX 为 574142 字节、20 个文件，SHA-256 为 `24ea90a2022ea42f19f37467c5b4a1a70f7079d3c27336856bcfe1c13c9bba0b`。ZIP 完整性、版本、UI 宿主声明、运行资源、askpass 可执行位和使用者文档与源码一致性检查通过；运行资源及 bundle 与用户确认的 `0.2.3-http-folders-test` 包逐字节相同。发布说明提取脚本已核对。主分支 / 标签 CI、GitHub Release 及 Marketplace 结果待实际完成后补记。
+- 首次 main CI（[42747303568](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42747303568)）中 macOS / Ubuntu 通过；Windows 在 HTTP 匿名克隆后因 `core.autocrlf` 将夹具文本检出为 CRLF，导致固定 LF 字节断言失败。测试仓库新增 `.gitattributes` 固定该文件不做换行转换，保留内容断言，不改产品行为或跳过 Windows 测试。未推送正式标签，修正后重新运行三平台 CI。
 
 ### 0.2.3 发布验证（2026-11-09，正式发布完成）
 
