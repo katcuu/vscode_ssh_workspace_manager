@@ -13,9 +13,10 @@ const notices = [];
 for (const name of names) {
   const p = JSON.parse(await readFile(`node_modules/${name}/package.json`, 'utf8'));
   let license = '';
-  for (const file of ['LICENSE', 'LICENSE.md', 'LICENSE-MIT', 'COPYING']) {
+  for (const file of ['LICENSE', 'License', 'LICENSE.txt', 'LICENSE.md', 'LICENSE-MIT', 'COPYING']) {
     try { license = await readFile(`node_modules/${name}/${file}`, 'utf8'); break; } catch {}
   }
+  if (!license.trim()) throw new Error(`Missing license text for ${name}@${p.version}`);
   notices.push(`${name}@${p.version} (${p.license || 'see source'})\n${license}`);
 }
 await writeFile('dist/THIRD_PARTY_NOTICES.txt', notices.join('\n\n---\n\n'));

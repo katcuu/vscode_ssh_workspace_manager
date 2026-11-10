@@ -1,6 +1,6 @@
 # SSH Workspace Manager 开发交接手册
 
-维护日期：2026-11-10。用户已确认 HTTP 克隆、目录新建 / 删除测试通过，并授权提交及正式发布；当前准备 `0.3.0`，尚未完成本轮推送和市场发布。上一正式版为 `0.2.3`；其三平台 CI、GitHub Release 和 Marketplace OIDC 发布均成功，具体证据见本文的 `0.2.3` 发布验证记录。当前状态需以本轮发布验证记录为准。
+维护日期：2026-11-10。用户已确认 HTTP 克隆、目录新建 / 删除测试通过并授权正式发布；`0.3.0` 的三平台 CI、GitHub Release 与 Marketplace OIDC 发布均成功，市场官方接口确认 `validated`。最终产物核验发现 Linux 构建未识别依赖的 `License` 文件，正在准备补全第三方许可证的 `0.3.1` 补丁；插件运行代码保持用户确认的内容。各版本状态以本轮发布验证记录为准。
 
 本手册用于让后续 AI 或开发者独立接手功能开发、定位问题和验证交付。入口规则见 [AGENTS.md](../AGENTS.md)，使用说明见 [README](../README.md)。具体行为和命令以当前源码、`package.json` 为准；修改实现时同步更新本文。
 
@@ -16,11 +16,11 @@
 | --- | --- |
 | 仓库 | [katcuu/vscode_ssh_workspace_manager](https://github.com/katcuu/vscode_ssh_workspace_manager) |
 | 扩展 / 发布者 | `katcuu.ssh-workspace-manager` / `katcuu`，MIT |
-| 版本与最低 API | 待发布 `0.3.0`，上一正式版 `0.2.3`；VS Code `^1.99.0` |
+| 版本与最低 API | 待发布补丁 `0.3.1`，正式版 `0.3.0`；VS Code `^1.99.0` |
 | 平台 | macOS / Windows 客户端；Linux SSH 服务器 |
-| 本机交付 | `0.3.0` VSIX 已打包并校验，运行资源与用户确认的 HTTP / 目录操作测试包一致；隔离宿主基础 smoke 通过 |
-| 市场 | [GitHub Release v0.2.3](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.2.3) 已发布 VSIX；Marketplace 官方查询接口确认 `0.2.3` 为 `validated`；[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42574215684) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
-| 自动验证 | `0.3.0` 在 Node.js 22.23.4 下类型检查、45 项测试、构建、打包通过；隔离 VS Code 1.139.0 扩展宿主基础 smoke 通过；三平台 CI 待完成 |
+| 本机交付 | `0.3.1` VSIX 已打包并校验九项依赖许可证；运行 bundle 与界面资源和用户确认的 HTTP / 目录操作测试包一致，宿主基础 smoke 沿用 `0.3.0` 验证 |
+| 市场 | [GitHub Release v0.3.0](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.3.0) 已发布 VSIX；Marketplace 官方查询确认 `0.3.0` 为 `validated`；[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42762180653) 的三平台检查、GitHub Release 和 Marketplace 发布均成功 |
+| 自动验证 | `0.3.0` 在 Node.js 22.23.4 下 45 项测试及隔离 VS Code 1.139.0 基础 smoke 通过，标签三平台 CI 全通过；`0.3.1` 类型检查、构建、打包通过，CI 待完成 |
 
 市场状态是交接时的记录，不是实时查询结果。继续发布前，核对 [Marketplace](https://marketplace.visualstudio.com/items?itemName=katcuu.ssh-workspace-manager) 与 [发布者管理页](https://marketplace.visualstudio.com/manage/publishers/katcuu)。不要把 GitHub 推送、本机安装或用户看到旧市场版本误认为发布失败。
 
@@ -213,7 +213,7 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 - 用户要求自测通过后自动生成并提供 VSIX，规则已同步至 `AGENTS.md`、`CONTRIBUTING.md` 及本文。测试包沿用 `0.2.2`；没有提交、打标签或上架。
 - 已运行 `npm run package`；测试包 `artifacts/ssh-workspace-manager-0.2.2.vsix` 为 571283 字节，ZIP 完整性、包内版本、UI 宿主声明及 HTML / CSS / JS / bundle 与当前源码一致性检查通过。SHA-256 为 `d2212a2878c804301e6a929b6647ce32c17ec17512598ff6775ccd656cf5f063`。
 
-### HTTP 克隆与浏览区目录操作（2026-11-10，用户测试通过，准备随 0.3.0 发布）
+### HTTP 克隆与浏览区目录操作（2026-11-10，用户测试通过，已随 0.3.0 发布）
 
 - 本机与远程克隆接受 HTTP 地址及端口，仍拒绝 URL 内嵌凭据、查询令牌和非法目录名；原生输入框按需处理 HTTP 账号和密码 / 令牌，提示明文传输。修复本机 `GIT_ASKPASS` 整段命令被当成文件名的问题，改为和 SSH 共用实际启动脚本。
 - “新建文件夹”在当前路径下创建并选中；“删除选中文件夹”只允许直接子目录，连续两次确认后删除，刷新并清理对应记录。按钮和克隆任务互斥，取消或失败均恢复可用状态。
@@ -221,12 +221,21 @@ VS Code 打开仓库后按 F5，使用 `.vscode/launch.json` 启动扩展开发�
 - 隔离 VS Code 1.139.0 扩展宿主基础 smoke 通过。复用实际 HTML / CSS / JS 的独立浏览器夹具检查约 1233px / 385px 内容宽度的按钮可用性、选中反馈、新建后选中及无横向溢出；这不是原生确认框或真实 Webview 的完整交互验收。桌面自动化未能选中隔离宿主窗口，未在用户真实服务器执行删除；Windows 实机仍需用户验收。
 - Node.js 22.23.4 下类型检查和 45 项自动测试通过。`npm run package` 的类型检查、构建和打包通过；VSIX 共 20 个文件，已核对 ZIP 完整性、版本、UI 宿主声明、包内界面 / bundle / askpass / 用户文档与源码一致及 Unix 启动脚本可执行位。开发阶段交付 `artifacts/ssh-workspace-manager-0.2.3-http-folders-test.vsix`，沿用 `0.2.3` 测试包版本，当时未提交、打标签或上架；用户随后确认 HTTP / 新建 / 删除测试通过，并授权发布 `0.3.0`。用户未说明本轮验收的具体系统，不将其记为 Windows 实机验证。
 
-### 0.3.0 发布准备（2026-11-10，尚未发布）
+### 0.3.0 发布验证（2026-11-10，正式发布完成）
 
 - 用户确认采用 `A.B.C`：大功能或较大页面设计变化增加 `A` 并将 `B`、`C` 归零；新增小功能增加 `B` 并将 `C` 归零；Bug 修复增加 `C`。本轮新增 HTTP 克隆和目录操作，版本由 `0.2.3` 升至 `0.3.0`，规则同步至 AGENTS、CONTRIBUTING 与发布指南。
 - `package.json`、`package-lock.json` 与 CHANGELOG 已更新为 `0.3.0`。Node.js 22.23.4 下 45 项测试全部通过，`npm run package` 的类型检查、构建和 VSIX 生成通过；隔离 VS Code 1.139.0 宿主通过激活、活动栏直接打开、原生命令、四类侧栏入口及管理页单实例检查。本轮宿主不重复执行真实服务器连接或目录删除；用户已确认上一测试包的 HTTP / 新建 / 删除操作通过。
-- 本机正式 VSIX 为 574142 字节、20 个文件，SHA-256 为 `24ea90a2022ea42f19f37467c5b4a1a70f7079d3c27336856bcfe1c13c9bba0b`。ZIP 完整性、版本、UI 宿主声明、运行资源、askpass 可执行位和使用者文档与源码一致性检查通过；运行资源及 bundle 与用户确认的 `0.2.3-http-folders-test` 包逐字节相同。发布说明提取脚本已核对。主分支 / 标签 CI、GitHub Release 及 Marketplace 结果待实际完成后补记。
+- 本机正式 VSIX 为 574142 字节、20 个文件，SHA-256 为 `24ea90a2022ea42f19f37467c5b4a1a70f7079d3c27336856bcfe1c13c9bba0b`。ZIP 完整性、版本、UI 宿主声明、运行资源、askpass 可执行位和使用者文档与源码一致性检查通过；运行资源及 bundle 与用户确认的 `0.2.3-http-folders-test` 包逐字节相同。发布说明提取脚本已核对；后续 CI 和市场证据如下。
 - 首次 main CI（[42747303568](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42747303568)）中 macOS / Ubuntu 通过；Windows 在 HTTP 匿名克隆后因 `core.autocrlf` 将夹具文本检出为 CRLF，导致固定 LF 字节断言失败。测试仓库新增 `.gitattributes` 固定该文件不做换行转换，保留内容断言，不改产品行为或跳过 Windows 测试。未推送正式标签，修正后重新运行三平台 CI。
+- 功能提交 `fd8e421cebca8a4a020ee0f9c093d86c8238f3c6` 和测试夹具修正 `7064a926c38774b19458291c525eda572e8eef1d` 已推送 `main`。修正后 [main CI](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42761716005) 的 macOS / Windows / Ubuntu 检查全部通过；另在本机显式启用 `core.autocrlf=true` 验证 HTTP 夹具通过。
+- 附注标签 `v0.3.0` 指向 `7064a926c38774b19458291c525eda572e8eef1d`。[标签工作流](https://github.com/katcuu/vscode_ssh_workspace_manager/actions/runs/42762180653) 的三平台检查、GitHub Release 和 Marketplace OIDC 发布均成功；上传日志明确返回 `Published katcuu.ssh-workspace-manager v0.3.0.`，没有跳过版本。[Release](https://github.com/katcuu/vscode_ssh_workspace_manager/releases/tag/v0.3.0) 为正式版本，说明与 CHANGELOG 一致，附 CI 生成的 VSIX。
+- Marketplace 官方查询确认版本 `0.3.0`，状态 `validated`，`lastUpdated` 为 `2026-11-10T05:35:36.54Z`。CI 安装包 574025 字节、20 个文件，SHA-256 为 `471f6ecb8504f6c74945e93fa30d9a90780132972da8d8c69d9616ebe673871c`；ZIP 完整性、manifest、bundle、界面和使用者文档核对通过。`.cmd` 的 CRLF 与 `.gitattributes` 一致；第三方许可证比本机少了 `retry` 的正文，已列为下述 `0.3.1` 修复，不能把这份产物记为许可证完整性通过。
+
+### 0.3.1 发布准备（2026-11-10，尚未发布）
+
+- `retry` 的许可证文件为 `License`，此前构建脚本只尝试 `LICENSE` 等名称；macOS 默认文件系统忽略大小写，Linux 则漏读。新增缺失检查后也发现 `signal-exit` 的 `LICENSE.txt` 未被读取。构建脚本补全这两种实际文件名，并在任何运行时依赖许可证正文为空时立即失败，防止静默生成不完整的 notices。
+- `0.3.0` 已经公开发布，因此保留其标签与产物，按用户的补丁规则递增为 `0.3.1`；此次只修复打包，不改插件运行代码或交互。manifest、锁文件及 CHANGELOG 已同步。
+- Node.js 22.23.4 下 `npm run package` 的类型检查、构建、打包通过；本机 VSIX 574269 字节、20 个文件，SHA-256 为 `a143e7c6340c893a713c1d7fafaf305cd5b3e84673c8f7051461be89c0d75670`。ZIP、版本、UI 宿主声明、资源与源码一致性及九项依赖的真实许可证正文核对通过，bundle 和界面资源与用户确认测试包相同；本轮不重复完整 UI 操作。三平台 CI、Release 与 Marketplace 待完成后补记。
 
 ### 0.2.3 发布验证（2026-11-09，正式发布完成）
 
